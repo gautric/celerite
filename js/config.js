@@ -7,8 +7,8 @@
 export const SITE_A = {
   id: "meudon",
   nom: "Meudon — Grande Coupole (terrasse)",
-  lat: 48.8049,
-  lon: 2.2305,
+  lat: 48.80507224765898,
+  lon: 2.231073315968248,
   // Altitude ABSOLUE d'émission, donnée du problème (début du faisceau).
   // Ce n'est PAS recalculé à partir du terrain.
   altitude: 162,
@@ -17,8 +17,8 @@ export const SITE_A = {
 export const SITE_B = {
   id: "arago",
   nom: "Paris — Coupole Arago",
-  lat: 48.8361,
-  lon: 2.3366,
+  lat: 48.83640599767875,
+  lon: 2.3367350073353537,
   // Sol ~67 m (IGN). L'altitude du récepteur est un champ utilisateur :
   // valeur par défaut = altitude sol IGN en B + hauteur de coupole.
   solApprox: 67,

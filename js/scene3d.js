@@ -360,18 +360,9 @@ export class Scene3D {
           parameters: { depthTest: true },
         })
       );
-      layers.push(
-        new deck.ScatterplotLayer({
-          id: "site-markers",
-          data: siteData,
-          getPosition: (d) => [d.position[0], d.position[1], d.altitude],
-          getFillColor: (d) => d.color,
-          getRadius: 40,
-          radiusUnits: "meters",
-          radiusMinPixels: 6,
-          parameters: { depthTest: true },
-        })
-      );
+      // (Les disques des sites A/B — ScatterplotLayer "site-markers" — ont été
+      // retirés à la demande. Les colonnes verticales ci-dessus restent comme
+      // repères de position/altitude des deux sites.)
     }
 
     // LE FAISCEAU : LineLayer dont les positions portent z (altitude en m).
@@ -399,23 +390,10 @@ export class Scene3D {
       );
     }
 
-    // Points d'impact d'obstruction (marqueurs rouges distincts à l'altitude top).
-    if (this._obstructions.length) {
-      layers.push(
-        new deck.ScatterplotLayer({
-          id: "obstruction-hits",
-          data: this._obstructions,
-          // z mis à l'échelle de l'exagération (affichage) ; d.top reste la
-          // valeur vraie utilisée par le calcul de ligne de visée.
-          getPosition: (d) => [d.lon, d.lat, d.top * ex],
-          getFillColor: COLORS.obstructionHit,
-          getRadius: 30,
-          radiusUnits: "meters",
-          radiusMinPixels: 5,
-          parameters: { depthTest: true },
-        })
-      );
-    }
+    // (Les disques rouges d'impact d'obstruction ont été retirés à la demande :
+    // l'obstruction reste signalée par les bâtiments en rouge, la couleur du
+    // faisceau et le verdict/marge du panneau. Les données d'obstruction sont
+    // toujours calculées, simplement plus dessinées en 3D.)
 
     this.overlay.setProps({ layers });
   }
