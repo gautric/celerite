@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tir laser Meudon → Paris Arago — Ligne de visée 3D</title>
+
+    <!-- MapLibre GL JS (fond de carte + terrain 3D + bâtiments extrudés) -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.css"
+    />
+    <script src="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.js"></script>
+    <!-- deck.gl (faisceau 3D à altitude vraie, occlusion par profondeur) -->
+    <script src="https://unpkg.com/deck.gl@9.4.0/dist.min.js"></script>
+    <!-- Chart.js (profil en coupe 2D) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <header id="header">
+      <h1>Tir laser Meudon → Paris (Coupole Arago)</h1>
+      <p>
+        Expérience scientifique : visualisation 3D d'une ligne de visée (faisceau
+        laser) entre la Grande Coupole de l'Observatoire de Meudon (terrasse à
+        162 m d'altitude) et la Coupole Arago de l'Observatoire de Paris. Le
+        faisceau est tracé à son altitude réelle et testé contre le relief et les
+        bâtiments pour déterminer s'il est dégagé ou obstrué.
+      </p>
+    </header>
+
+    <main id="layout">
+      <!-- Scène 3D -->
+      <div id="map"></div>
+
+      <!-- Panneau résultats + contrôles -->
+      <aside id="panel">
+        <div id="status" class="status" style="display: none"></div>
+
+        <section class="card">
+          <h2>Résultats</h2>
+          <dl class="results">
+            <dt>Distance A→B</dt>
+            <dd id="res-distance">—</dd>
+            <dt>Azimut A→B</dt>
+            <dd id="res-azimut">—</dd>
+            <dt>Altitude émetteur (Meudon)</dt>
+            <dd id="res-altA">—</dd>
+            <dt>Dégagement minimal</dt>
+            <dd id="res-clearance">—</dd>
+            <dt>Verdict</dt>
+            <dd><span id="res-verdict" class="verdict">—</span></dd>
+            <dt>Bâtiments analysés</dt>
+            <dd id="res-nbat">—</dd>
+          </dl>
+        </section>
+
+        <section class="card">
+          <h2>Contrôles</h2>
+          <label class="ctrl">
+            Altitude récepteur (Arago), m
+            <input id="input-altB" type="number" step="1" />
+            <small id="hint-altB" class="hint"></small>
+          </label>
+
+          <label class="ctrl">
+            Exagération du terrain : <span id="exag-val">1.5×</span>
+            <input id="input-exag" type="range" min="1" max="5" step="0.1" />
+          </label>
+
+          <button id="btn-recalc" class="btn">Recalculer / Actualiser</button>
+
+          <fieldset class="toggles">
+            <legend>Affichage</legend>
+            <label><input id="toggle-buildings" type="checkbox" checked /> Bâtiments</label>
+            <label><input id="toggle-terrain" type="checkbox" checked /> Terrain 3D</label>
+            <label><input id="toggle-beam" type="checkbox" checked /> Faisceau</label>
+            <label><input id="toggle-profil" type="checkbox" checked /> Profil 2D</label>
+          </fieldset>
+        </section>
+      </aside>
+    </main>
+
+    <!-- Profil en coupe 2D (repliable) -->
+    <section id="profil">
+      <h2>Profil en coupe (altitude vs distance)</h2>
+      <div class="chart-wrap"><canvas id="chart"></canvas></div>
+    </section>
+
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

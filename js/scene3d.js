@@ -1,0 +1,299 @@
+// scene3d.js — Scène 3D géospatiale (MapLibre GL JS + deck.gl).
+//  - MapLibre : fond OSM raster, terrain 3D (DEM Terrarium), ombrage, bâtiments
+//    en extrusion (fill-extrusion), pitch/bearing.
+//  - deck.gl (MapLibreOverlay interleaved) : LE FAISCEAU est un vrai segment 3D
+//    dont les coordonnées portent une altitude z ABSOLUE en mètres. En mode
+//    "interleaved" deck.gl partage le contexte WebGL2 et le depth buffer de
+//    MapLibre : le faisceau est donc testé en profondeur (depthTest) contre le
+//    terrain ET les bâtiments. Un obstacle plus haut que le faisceau le masque
+//    réellement à l'écran (ce n'est PAS une ligne drapée sur le sol).
+//
+// Les globals maplibregl / deck sont fournis par les scripts CDN (voir index.html).
+
+import {
+  TILES,
+  COLORS,
+  DEFAULT_EXAGGERATION,
+  SITE_A,
+  SITE_B,
+} from "./config.js";
+
+// Convertit "#rrggbb" -> [r,g,b].
+function hexToRgb(hex) {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+}
+
+export class Scene3D {
+  constructor(container) {
+    this.map = null;
+    this.overlay = null;
+    this.container = container;
+
+    // État du faisceau / marqueurs (coordonnées [lon, lat, altitude_m]).
+    this._beam = null; // { source:[lon,lat,z], target:[lon,lat,z], blocked:bool }
+    this._obstructions = []; // [{lon,lat,top}]
+    this._beamVisible = true;
+    this._buildingsVisible = true;
+  }
+
+  /** Initialise la carte MapLibre + terrain 3D. Résout quand le style est prêt. */
+  init() {
+    const mid = {
+      lon: (SITE_A.lon + SITE_B.lon) / 2,
+      lat: (SITE_A.lat + SITE_B.lat) / 2,
+    };
+
+    this.map = new maplibregl.Map({
+      container: this.container,
+      center: [mid.lon, mid.lat],
+      zoom: 12,
+      pitch: 62, // vue inclinée pour percevoir les altitudes
+      bearing: 55, // orienté approximativement de A vers B
+      maxPitch: 85,
+      antialias: true,
+      style: {
+        version: 8,
+        sources: {
+          osm: {
+            type: "raster",
+            tiles: [TILES.osm],
+            tileSize: 256,
+            attribution: TILES.osmAttribution,
+          },
+          "terrain-dem": {
+            type: "raster-dem",
+            tiles: [TILES.terrarium],
+            tileSize: 256,
+            maxzoom: 15,
+            encoding: "terrarium",
+            attribution: TILES.terrariumAttribution,
+          },
+        },
+        layers: [
+          { id: "osm", type: "raster", source: "osm" },
+          {
+            id: "hillshade",
+            type: "hillshade",
+            source: "terrain-dem",
+            paint: { "hillshade-exaggeration": 0.4 },
+          },
+        ],
+      },
+    });
+
+    this.map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }));
+
+    return new Promise((resolve, reject) => {
+      this.map.on("error", (e) => {
+        // On ne rejette pas sur les erreurs de tuiles isolées, seulement on log.
+        // eslint-disable-next-line no-console
+        console.warn("MapLibre:", e && e.error ? e.error.message : e);
+      });
+      this.map.on("load", () => {
+        // Terrain 3D : relief issu du DEM Terrarium.
+        this.map.setTerrain({
+          source: "terrain-dem",
+          exaggeration: DEFAULT_EXAGGERATION,
+        });
+        // Overlay deck.gl interleaved (partage le depth buffer de MapLibre).
+        const Overlay = deck.MapLibreOverlay || deck.MapboxOverlay;
+        this.overlay = new Overlay({ interleaved: true, layers: [] });
+        this.map.addControl(this.overlay);
+        this._refreshLayers();
+        resolve();
+      });
+    });
+  }
+
+  /** Règle l'exagération verticale du terrain 3D. */
+  setExaggeration(v) {
+    if (this.map && this.map.getTerrain()) {
+      this.map.setTerrain({ source: "terrain-dem", exaggeration: v });
+    }
+  }
+
+  // --- Bâtiments (fill-extrusion) ---
+
+  /** Ajoute / remplace la couche de bâtiments en extrusion 3D. */
+  setBuildings(fc) {
+    const src = this.map.getSource("buildings");
+    if (src) {
+      src.setData(fc);
+      return;
+    }
+    this.map.addSource("buildings", { type: "geojson", data: fc });
+    this.map.addLayer({
+      id: "buildings-3d",
+      type: "fill-extrusion",
+      source: "buildings",
+      paint: {
+        // Rouge si le bâtiment obstrue le faisceau, couleur neutre sinon.
+        "fill-extrusion-color": [
+          "case",
+          ["get", "obstructs"],
+          COLORS.buildingObstruct,
+          COLORS.buildingDefault,
+        ],
+        "fill-extrusion-base": 0,
+        "fill-extrusion-height": ["get", "height"],
+        "fill-extrusion-opacity": 0.85,
+      },
+    });
+    this._buildingsFC = fc;
+  }
+
+  /** Marque les bâtiments obstruants (set d'ids) en rouge et rafraîchit. */
+  markObstructing(idSet) {
+    if (!this._buildingsFC) return;
+    for (const f of this._buildingsFC.features) {
+      f.properties.obstructs = idSet.has(f.properties.id);
+    }
+    const src = this.map.getSource("buildings");
+    if (src) src.setData(this._buildingsFC);
+  }
+
+  setBuildingsVisible(visible) {
+    this._buildingsVisible = visible;
+    if (this.map.getLayer("buildings-3d")) {
+      this.map.setLayoutProperty(
+        "buildings-3d",
+        "visibility",
+        visible ? "visible" : "none"
+      );
+    }
+  }
+
+  setTerrainVisible(visible) {
+    if (!this.map) return;
+    this.map.setTerrain(
+      visible ? { source: "terrain-dem", exaggeration: DEFAULT_EXAGGERATION } : null
+    );
+    if (this.map.getLayer("hillshade")) {
+      this.map.setLayoutProperty(
+        "hillshade",
+        "visibility",
+        visible ? "visible" : "none"
+      );
+    }
+  }
+
+  // --- Faisceau + marqueurs (deck.gl, altitude absolue en z) ---
+
+  /**
+   * Définit le faisceau 3D. altA/altB en mètres ABSOLUS.
+   * blocked = true -> faisceau rouge, sinon vert.
+   */
+  setBeam(altA, altB, blocked) {
+    this._beam = {
+      // z est l'altitude ABSOLUE en mètres (3e composante des positions).
+      source: [SITE_A.lon, SITE_A.lat, altA],
+      target: [SITE_B.lon, SITE_B.lat, altB],
+      blocked: !!blocked,
+    };
+    this._refreshLayers();
+  }
+
+  /** Points d'impact d'obstruction : [{lon,lat,top}] (altitude = top en m). */
+  setObstructions(points) {
+    this._obstructions = points || [];
+    this._refreshLayers();
+  }
+
+  setBeamVisible(visible) {
+    this._beamVisible = visible;
+    this._refreshLayers();
+  }
+
+  /** (Re)construit les couches deck.gl. */
+  _refreshLayers() {
+    if (!this.overlay) return;
+    const layers = [];
+
+    // Marqueurs 3D des deux sites (colonnes à l'altitude vraie).
+    const siteData = [];
+    if (this._beam) {
+      siteData.push({
+        position: [SITE_A.lon, SITE_A.lat, 0],
+        altitude: this._beam.source[2],
+        color: COLORS.markerA,
+      });
+      siteData.push({
+        position: [SITE_B.lon, SITE_B.lat, 0],
+        altitude: this._beam.target[2],
+        color: COLORS.markerB,
+      });
+    }
+    if (siteData.length) {
+      // Colonne depuis le sol jusqu'à l'altitude du site (repère vertical).
+      layers.push(
+        new deck.PathLayer({
+          id: "site-columns",
+          data: siteData,
+          getPath: (d) => [
+            [d.position[0], d.position[1], 0],
+            [d.position[0], d.position[1], d.altitude],
+          ],
+          getColor: (d) => d.color,
+          getWidth: 6,
+          widthUnits: "pixels",
+          parameters: { depthTest: true },
+        })
+      );
+      layers.push(
+        new deck.ScatterplotLayer({
+          id: "site-markers",
+          data: siteData,
+          getPosition: (d) => [d.position[0], d.position[1], d.altitude],
+          getFillColor: (d) => d.color,
+          getRadius: 40,
+          radiusUnits: "meters",
+          radiusMinPixels: 6,
+          parameters: { depthTest: true },
+        })
+      );
+    }
+
+    // LE FAISCEAU : LineLayer dont les positions portent z (altitude en m).
+    // parameters.depthTest:true + overlay interleaved => occlusion correcte
+    // par le terrain et les bâtiments (un obstacle plus haut masque le trait).
+    if (this._beam && this._beamVisible) {
+      layers.push(
+        new deck.LineLayer({
+          id: "laser-beam",
+          data: [this._beam],
+          getSourcePosition: (d) => d.source, // [lon, lat, altitude_m]
+          getTargetPosition: (d) => d.target, // [lon, lat, altitude_m]
+          getColor: (d) => (d.blocked ? COLORS.beamBlocked : COLORS.beamClear),
+          getWidth: 4,
+          widthUnits: "pixels",
+          parameters: { depthTest: true },
+        })
+      );
+    }
+
+    // Points d'impact d'obstruction (marqueurs rouges distincts à l'altitude top).
+    if (this._obstructions.length) {
+      layers.push(
+        new deck.ScatterplotLayer({
+          id: "obstruction-hits",
+          data: this._obstructions,
+          getPosition: (d) => [d.lon, d.lat, d.top],
+          getFillColor: COLORS.obstructionHit,
+          getRadius: 30,
+          radiusUnits: "meters",
+          radiusMinPixels: 5,
+          parameters: { depthTest: true },
+        })
+      );
+    }
+
+    this.overlay.setProps({ layers });
+  }
+}
+
+export { hexToRgb };
