@@ -12,6 +12,9 @@ export const SITE_A = {
   // Altitude ABSOLUE d'émission, donnée du problème (début du faisceau).
   // Ce n'est PAS recalculé à partir du terrain.
   altitude: 162,
+  // Hauteur de base (socle / pied d'instrument) ajoutée sous le point
+  // d'émission, en mètres. Relève d'autant l'extrémité A du faisceau.
+  base: 20,
 };
 
 export const SITE_B = {
@@ -20,8 +23,11 @@ export const SITE_B = {
   lat: 48.83640599767875,
   lon: 2.3367350073353537,
   // Sol ~67 m (IGN). L'altitude du récepteur est un champ utilisateur :
-  // valeur par défaut = altitude sol IGN en B + hauteur de coupole.
+  // valeur par défaut = altitude sol IGN en B + socle + hauteur de coupole.
   solApprox: 67,
+  // Hauteur de base (socle / pied d'instrument) ajoutée au-dessus du sol IGN
+  // en B, en mètres. Relève d'autant l'extrémité B du faisceau.
+  base: 20,
 };
 
 // Hauteur de coupole ajoutée au sol IGN pour l'altitude récepteur par défaut.

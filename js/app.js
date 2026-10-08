@@ -26,7 +26,7 @@ const state = {
   groundZ: null, // number[]
   distanceM: 0,
   azimuth: 0,
-  altA: SITE_A.altitude,
+  altA: SITE_A.altitude + SITE_A.base, // émission = terrasse + socle
   altB: null, // altitude récepteur (éditable)
   // Hauteurs PHYSIQUES ajoutées à chaque extrémité du faisceau (m). Elles
   // modifient réellement la géométrie du faisceau (ce n'est PAS un effet
@@ -211,6 +211,19 @@ function wireControls() {
     $("exag-val").textContent = v.toFixed(1) + "×";
     if (state.scene) state.scene.setExaggeration(v);
   });
+
+  // Hauteur des immeubles : rendu VISUEL UNIQUEMENT. On rafraîchit seulement la
+  // propriété de peinture de la couche 3D — aucun rechargement de page, aucun
+  // appel réseau (ni Overpass ni IGN) : les hauteurs VRAIES en cache restent
+  // celles qu'utilisent le calcul LOS, le verdict et le profil 2D.
+  document
+    .querySelectorAll('input[name="building-height"]')
+    .forEach((radio) => {
+      radio.addEventListener("change", (e) => {
+        if (!e.target.checked || !state.scene) return;
+        state.scene.setBuildingHeightMode(e.target.value);
+      });
+    });
 
   // Boussole : oriente la caméra 3D vers un cap cardinal. Seul le bearing
   // change (pitch, centre et zoom préservés). N=0, E=90, S=180, O=270

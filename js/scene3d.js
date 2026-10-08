@@ -44,6 +44,12 @@ export class Scene3D {
     // extrémités restent ancrées à la surface exagérée. VISUEL UNIQUEMENT :
     // n'altère jamais le calcul de ligne de visée (voir _refreshLayers).
     this._exaggeration = DEFAULT_EXAGGERATION;
+    // Mode de rendu de la hauteur des immeubles (boutons radio du panneau) :
+    //   "exageree" -> hauteur × exagération du terrain (comportement par défaut,
+    //                 les immeubles restent proportionnés au relief exagéré) ;
+    //   "reelle"   -> hauteur vraie en mètres, sans facteur d'exagération.
+    // VISUEL UNIQUEMENT : ce choix ne touche jamais la physique (los.js).
+    this._buildingHeightMode = "exageree";
   }
 
   /** Initialise la carte MapLibre + terrain 3D. Résout quand le style est prêt. */
@@ -187,20 +193,39 @@ export class Scene3D {
   // --- Bâtiments (fill-extrusion) ---
 
   /**
-   * Expression de hauteur d'extrusion mise à l'échelle de l'exagération.
+   * Expression de hauteur d'extrusion, selon le mode choisi par l'utilisateur.
    * VISUEL UNIQUEMENT : avec le terrain 3D, MapLibre pose la base de l'extrusion
    * (fill-extrusion-base = 0) sur la surface du terrain, elle-même exagérée par
-   * le facteur d'exagération. On multiplie donc la hauteur VRAIE du bâtiment par
-   * ce facteur pour que le toit rendu atteigne (sol + hauteur) × exagération,
-   * exactement comme le faisceau rendu à altitude × exagération. La hauteur VRAIE
-   * (properties.height) reste intacte et seule utilisée par le calcul de ligne de
-   * visée (los.js) : l'exagération n'affecte JAMAIS le verdict ni le profil 2D.
+   * le facteur d'exagération.
+   *  - mode "exageree" : on multiplie la hauteur VRAIE du bâtiment par ce
+   *    facteur pour que le toit rendu atteigne (sol + hauteur) × exagération,
+   *    exactement comme le faisceau rendu à altitude × exagération ;
+   *  - mode "reelle" : on rend la hauteur VRAIE en mètres (un immeuble de 20 m
+   *    mesure 20 m à l'écran), même si le terrain reste exagéré.
+   * Dans les deux cas la hauteur VRAIE (properties.height) reste intacte et
+   * seule utilisée par le calcul de ligne de visée (los.js) : ni l'exagération
+   * ni ce mode n'affectent JAMAIS le verdict, les marges ni le profil 2D.
    */
   _buildingHeightExpr() {
+    if (this._buildingHeightMode === "reelle") {
+      return ["get", "height"];
+    }
     return ["*", ["get", "height"], this._exaggeration];
   }
 
-  /** Applique la hauteur d'extrusion exagérée à la couche existante. */
+  /**
+   * Choisit le mode de rendu de la hauteur des immeubles : "reelle" (hauteur
+   * vraie en mètres) ou "exageree" (hauteur × exagération du terrain).
+   * VISUEL UNIQUEMENT : aucune donnée n'est rechargée (pas d'appel réseau), seule
+   * la propriété de peinture fill-extrusion-height est rafraîchie. La coloration
+   * rouge des bâtiments obstruants (propriété "obstructs") reste inchangée.
+   */
+  setBuildingHeightMode(mode) {
+    this._buildingHeightMode = mode === "reelle" ? "reelle" : "exageree";
+    this._updateBuildingExaggeration();
+  }
+
+  /** Applique la hauteur d'extrusion (selon le mode courant) à la couche existante. */
   _updateBuildingExaggeration() {
     if (this.map && this.map.getLayer("buildings-3d")) {
       this.map.setPaintProperty(

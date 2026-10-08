@@ -100,6 +100,25 @@
 
           <button id="btn-recalc" class="btn">Recalculer / Actualiser</button>
 
+          <!-- Hauteur des immeubles : choix de rendu VISUEL UNIQUEMENT. Le
+               calcul de ligne de visée, le verdict CLEAR/OBSTRUÉ, les marges et
+               le profil 2D utilisent toujours les hauteurs VRAIES. -->
+          <fieldset class="toggles">
+            <legend>Hauteur des immeubles</legend>
+            <label for="bh-reelle">
+              <input id="bh-reelle" type="radio" name="building-height" value="reelle" />
+              Hauteur réelle
+            </label>
+            <label for="bh-exageree">
+              <input id="bh-exageree" type="radio" name="building-height" value="exageree" checked />
+              Hauteur exagérée
+            </label>
+            <small class="hint">
+              Rendu seul : « réelle » = mètres vrais, « exagérée » = suit
+              l'exagération du terrain.
+            </small>
+          </fieldset>
+
           <fieldset class="toggles">
             <legend>Affichage</legend>
             <label><input id="toggle-buildings" type="checkbox" checked /> Bâtiments</label>
