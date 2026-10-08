@@ -65,7 +65,7 @@ function renderResults() {
   const los = state.los;
   $("res-distance").textContent = `${fmt(state.distanceM / 1000, 2)} km`;
   $("res-azimut").textContent = `${fmt(state.azimuth, 1)}°`;
-  // Altitude émetteur effective : 162 m + hauteur ajoutée au départ.
+  // Altitude émetteur effective : base (terrasse 162 m + socle) + hauteur ajoutée.
   const effAltA = state.altA + state.addedStartHeight;
   $("res-altA").textContent =
     state.addedStartHeight > 0
@@ -156,11 +156,11 @@ async function boot() {
   state.buildings = buildings;
   state.groundZ = groundZ;
 
-  // Altitude récepteur par défaut = sol IGN en B + hauteur de coupole.
+  // Altitude récepteur par défaut = sol IGN en B + socle + hauteur de coupole.
   const groundB = groundZ[groundZ.length - 1];
-  state.altB = groundB + DOME_HEIGHT;
+  state.altB = groundB + SITE_B.base + DOME_HEIGHT;
   $("input-altB").value = Math.round(state.altB);
-  state.hintAltBBase = `sol IGN ≈ ${fmt(groundB, 0)} m + coupole ${DOME_HEIGHT} m`;
+  state.hintAltBBase = `sol IGN ≈ ${fmt(groundB, 0)} m + socle ${SITE_B.base} m + coupole ${DOME_HEIGHT} m`;
   $("hint-altB").textContent = state.hintAltBBase;
 
   // Ajout des bâtiments à la scène et premier calcul.
