@@ -49,8 +49,9 @@ export function renderProfile(series, los, canvas) {
       {
         label: "Faisceau laser",
         data: series.beamAlt,
+        // Faisceau en vert fluo (néon) quand dégagé ; rouge quand obstrué.
         borderColor:
-          los.verdict === "CLEAR" ? "rgb(40,170,110)" : "rgb(226,60,60)",
+          los.verdict === "CLEAR" ? "rgb(57,255,20)" : "rgb(226,60,60)",
         backgroundColor: "transparent",
         fill: false,
         pointRadius: 0,

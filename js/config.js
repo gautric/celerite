@@ -67,7 +67,7 @@ export const DEFAULT_EXAGGERATION = 1.5;
 export const COLORS = {
   buildingDefault: "#8aa0b4",
   buildingObstruct: "#e23c3c",
-  beamClear: [40, 200, 120, 230], // vert
+  beamClear: [57, 255, 20, 255], // vert fluo (néon) — couleur du faisceau laser
   beamBlocked: [226, 60, 60, 230], // rouge
   markerA: [255, 180, 40, 255], // émetteur (orange)
   markerB: [60, 140, 255, 255], // récepteur (bleu)

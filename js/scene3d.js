@@ -39,6 +39,11 @@ export class Scene3D {
     this._obstructions = []; // [{lon,lat,top}]
     this._beamVisible = true;
     this._buildingsVisible = true;
+    // Facteur d'exagération verticale courant du terrain MapLibre. On l'applique
+    // AUSSI aux altitudes rendues par deck.gl (faisceau/marqueurs) pour que les
+    // extrémités restent ancrées à la surface exagérée. VISUEL UNIQUEMENT :
+    // n'altère jamais le calcul de ligne de visée (voir _refreshLayers).
+    this._exaggeration = DEFAULT_EXAGGERATION;
   }
 
   /** Initialise la carte MapLibre + terrain 3D. Résout quand le style est prêt. */
@@ -110,11 +115,20 @@ export class Scene3D {
     });
   }
 
-  /** Règle l'exagération verticale du terrain 3D. */
+  /**
+   * Règle l'exagération verticale du terrain 3D ET met à jour les couches
+   * deck.gl : le faisceau et les marqueurs sont redessinés avec des altitudes
+   * mises à l'échelle du même facteur, afin de rester collés à la surface
+   * exagérée. C'est une mise à l'échelle VISUELLE : le calcul de ligne de visée
+   * n'est pas affecté.
+   */
   setExaggeration(v) {
+    this._exaggeration = v;
     if (this.map && this.map.getTerrain()) {
       this.map.setTerrain({ source: "terrain-dem", exaggeration: v });
     }
+    // Re-rend le faisceau/marqueurs avec les z mis à l'échelle du nouveau facteur.
+    this._refreshLayers();
   }
 
   // --- Bâtiments (fill-extrusion) ---
@@ -171,7 +185,7 @@ export class Scene3D {
   setTerrainVisible(visible) {
     if (!this.map) return;
     this.map.setTerrain(
-      visible ? { source: "terrain-dem", exaggeration: DEFAULT_EXAGGERATION } : null
+      visible ? { source: "terrain-dem", exaggeration: this._exaggeration } : null
     );
     if (this.map.getLayer("hillshade")) {
       this.map.setLayoutProperty(
@@ -214,17 +228,25 @@ export class Scene3D {
     if (!this.overlay) return;
     const layers = [];
 
-    // Marqueurs 3D des deux sites (colonnes à l'altitude vraie).
+    // VISUEL UNIQUEMENT : on multiplie chaque altitude (z) rendue par le facteur
+    // d'exagération du terrain pour que le faisceau et les marqueurs suivent la
+    // surface exagérée de MapLibre. Les altitudes VRAIES (this._beam.*, .top)
+    // sont conservées intactes et restent utilisées par le calcul de ligne de
+    // visée (los.js) : l'exagération n'affecte JAMAIS le verdict ni le profil 2D.
+    const ex = this._exaggeration;
+
+    // Marqueurs 3D des deux sites (colonnes à l'altitude vraie, mise à l'échelle
+    // pour l'affichage uniquement).
     const siteData = [];
     if (this._beam) {
       siteData.push({
         position: [SITE_A.lon, SITE_A.lat, 0],
-        altitude: this._beam.source[2],
+        altitude: this._beam.source[2] * ex,
         color: COLORS.markerA,
       });
       siteData.push({
         position: [SITE_B.lon, SITE_B.lat, 0],
-        altitude: this._beam.target[2],
+        altitude: this._beam.target[2] * ex,
         color: COLORS.markerB,
       });
     }
@@ -262,14 +284,21 @@ export class Scene3D {
     // parameters.depthTest:true + overlay interleaved => occlusion correcte
     // par le terrain et les bâtiments (un obstacle plus haut masque le trait).
     if (this._beam && this._beamVisible) {
+      // Extrémités mises à l'échelle de l'exagération (z * ex) pour rester
+      // ancrées à la surface exagérée ; les z vrais ne sont pas modifiés.
+      const beamScaled = {
+        source: [this._beam.source[0], this._beam.source[1], this._beam.source[2] * ex],
+        target: [this._beam.target[0], this._beam.target[1], this._beam.target[2] * ex],
+        blocked: this._beam.blocked,
+      };
       layers.push(
         new deck.LineLayer({
           id: "laser-beam",
-          data: [this._beam],
-          getSourcePosition: (d) => d.source, // [lon, lat, altitude_m]
-          getTargetPosition: (d) => d.target, // [lon, lat, altitude_m]
+          data: [beamScaled],
+          getSourcePosition: (d) => d.source, // [lon, lat, altitude_m * ex]
+          getTargetPosition: (d) => d.target, // [lon, lat, altitude_m * ex]
           getColor: (d) => (d.blocked ? COLORS.beamBlocked : COLORS.beamClear),
-          getWidth: 4,
+          getWidth: 5,
           widthUnits: "pixels",
           parameters: { depthTest: true },
         })
@@ -282,7 +311,9 @@ export class Scene3D {
         new deck.ScatterplotLayer({
           id: "obstruction-hits",
           data: this._obstructions,
-          getPosition: (d) => [d.lon, d.lat, d.top],
+          // z mis à l'échelle de l'exagération (affichage) ; d.top reste la
+          // valeur vraie utilisée par le calcul de ligne de visée.
+          getPosition: (d) => [d.lon, d.lat, d.top * ex],
           getFillColor: COLORS.obstructionHit,
           getRadius: 30,
           radiusUnits: "meters",
