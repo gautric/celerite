@@ -28,6 +28,12 @@ const state = {
   azimuth: 0,
   altA: SITE_A.altitude,
   altB: null, // altitude récepteur (éditable)
+  // Hauteurs PHYSIQUES ajoutées à chaque extrémité du faisceau (m). Elles
+  // modifient réellement la géométrie du faisceau (ce n'est PAS un effet
+  // visuel) : altitudes effectives = base + hauteur ajoutée, injectées dans le
+  // calcul LOS, le rendu 3D et le profil 2D.
+  addedStartHeight: 0,
+  addedEndHeight: 0,
   los: null,
 };
 
@@ -45,15 +51,38 @@ function fmt(n, d = 1) {
   return Number.isFinite(n) ? n.toFixed(d) : "—";
 }
 
+// Débounce léger : regroupe les appels rapprochés (glissement d'un curseur).
+function debounce(fn, ms) {
+  let t = null;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), ms);
+  };
+}
+
 // Remplit le panneau de résultats.
 function renderResults() {
   const los = state.los;
   $("res-distance").textContent = `${fmt(state.distanceM / 1000, 2)} km`;
   $("res-azimut").textContent = `${fmt(state.azimuth, 1)}°`;
-  $("res-altA").textContent = `${fmt(state.altA, 0)} m`;
+  // Altitude émetteur effective : 162 m + hauteur ajoutée au départ.
+  const effAltA = state.altA + state.addedStartHeight;
+  $("res-altA").textContent =
+    state.addedStartHeight > 0
+      ? `${fmt(state.altA, 0)} m + ${fmt(state.addedStartHeight, 1)} m = ${fmt(effAltA, 0)} m`
+      : `${fmt(state.altA, 0)} m`;
   $("res-nbat").textContent = state.buildings
     ? state.buildings.features.length
     : "—";
+
+  // Reflète l'altitude récepteur effective (saisie + hauteur ajoutée à l'arrivée).
+  if (state.hintAltBBase != null && Number.isFinite(state.altB)) {
+    const effAltB = state.altB + state.addedEndHeight;
+    $("hint-altB").textContent =
+      state.addedEndHeight > 0
+        ? `${state.hintAltBBase} + ${fmt(state.addedEndHeight, 1)} m ajoutés = ${fmt(effAltB, 0)} m`
+        : state.hintAltBBase;
+  }
 
   if (los) {
     $("res-clearance").textContent = `${fmt(los.minClearance, 1)} m`;
@@ -67,17 +96,24 @@ function renderResults() {
 function recompute() {
   if (!state.buildings || !state.groundZ) return;
 
+  // Altitudes EFFECTIVES des extrémités du faisceau (modification PHYSIQUE) :
+  //   départ = émetteur Meudon (162 m fixe) + hauteur ajoutée au départ ;
+  //   arrivée = récepteur Arago (saisie) + hauteur ajoutée à l'arrivée.
+  // Ces altitudes vraies alimentent le calcul LOS, le rendu 3D et le profil 2D.
+  const effAltA = state.altA + state.addedStartHeight;
+  const effAltB = state.altB + state.addedEndHeight;
+
   const los = analyze({
     samples: state.samples,
     groundZ: state.groundZ,
     buildings: state.buildings,
-    altA: state.altA,
-    altB: state.altB,
+    altA: effAltA,
+    altB: effAltB,
   });
   state.los = los;
 
   const blocked = los.verdict !== "CLEAR";
-  state.scene.setBeam(state.altA, state.altB, blocked);
+  state.scene.setBeam(effAltA, effAltB, blocked);
   state.scene.markObstructing(los.obstructingBuildingIds);
   state.scene.setObstructions(
     los.obstructions.map((o) => ({ lon: o.lon, lat: o.lat, top: o.top }))
@@ -124,7 +160,8 @@ async function boot() {
   const groundB = groundZ[groundZ.length - 1];
   state.altB = groundB + DOME_HEIGHT;
   $("input-altB").value = Math.round(state.altB);
-  $("hint-altB").textContent = `sol IGN ≈ ${fmt(groundB, 0)} m + coupole ${DOME_HEIGHT} m`;
+  state.hintAltBBase = `sol IGN ≈ ${fmt(groundB, 0)} m + coupole ${DOME_HEIGHT} m`;
+  $("hint-altB").textContent = state.hintAltBBase;
 
   // Ajout des bâtiments à la scène et premier calcul.
   state.scene.setBuildings(buildings);
@@ -144,6 +181,28 @@ function wireControls() {
     const v = parseFloat($("input-altB").value);
     if (Number.isFinite(v)) state.altB = v;
     recompute();
+  });
+
+  // Recalcul depuis le cache (aucun réseau), légèrement débouncé pour fluidifier
+  // le glissement des curseurs de hauteur ajoutée.
+  const recomputeDebounced = debounce(recompute, 60);
+
+  const addStart = $("input-addStart");
+  addStart.addEventListener("input", (e) => {
+    const v = parseFloat(e.target.value);
+    if (!Number.isFinite(v)) return;
+    state.addedStartHeight = v;
+    $("addStart-val").textContent = v.toFixed(1) + " m";
+    recomputeDebounced();
+  });
+
+  const addEnd = $("input-addEnd");
+  addEnd.addEventListener("input", (e) => {
+    const v = parseFloat(e.target.value);
+    if (!Number.isFinite(v)) return;
+    state.addedEndHeight = v;
+    $("addEnd-val").textContent = v.toFixed(1) + " m";
+    recomputeDebounced();
   });
 
   const exag = $("input-exag");
@@ -172,6 +231,12 @@ function initUIDefaults() {
   const exag = $("input-exag");
   exag.value = DEFAULT_EXAGGERATION;
   $("exag-val").textContent = DEFAULT_EXAGGERATION.toFixed(1) + "×";
+
+  // Hauteurs ajoutées : défaut 0 m aux deux extrémités.
+  $("input-addStart").value = state.addedStartHeight;
+  $("addStart-val").textContent = state.addedStartHeight.toFixed(1) + " m";
+  $("input-addEnd").value = state.addedEndHeight;
+  $("addEnd-val").textContent = state.addedEndHeight.toFixed(1) + " m";
 }
 
 window.addEventListener("DOMContentLoaded", () => {
