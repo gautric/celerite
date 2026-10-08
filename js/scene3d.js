@@ -127,11 +127,39 @@ export class Scene3D {
     if (this.map && this.map.getTerrain()) {
       this.map.setTerrain({ source: "terrain-dem", exaggeration: v });
     }
+    // Met à l'échelle la hauteur rendue des bâtiments par le même facteur, pour
+    // qu'ils suivent le terrain exagéré de façon cohérente avec le faisceau.
+    this._updateBuildingExaggeration();
     // Re-rend le faisceau/marqueurs avec les z mis à l'échelle du nouveau facteur.
     this._refreshLayers();
   }
 
   // --- Bâtiments (fill-extrusion) ---
+
+  /**
+   * Expression de hauteur d'extrusion mise à l'échelle de l'exagération.
+   * VISUEL UNIQUEMENT : avec le terrain 3D, MapLibre pose la base de l'extrusion
+   * (fill-extrusion-base = 0) sur la surface du terrain, elle-même exagérée par
+   * le facteur d'exagération. On multiplie donc la hauteur VRAIE du bâtiment par
+   * ce facteur pour que le toit rendu atteigne (sol + hauteur) × exagération,
+   * exactement comme le faisceau rendu à altitude × exagération. La hauteur VRAIE
+   * (properties.height) reste intacte et seule utilisée par le calcul de ligne de
+   * visée (los.js) : l'exagération n'affecte JAMAIS le verdict ni le profil 2D.
+   */
+  _buildingHeightExpr() {
+    return ["*", ["get", "height"], this._exaggeration];
+  }
+
+  /** Applique la hauteur d'extrusion exagérée à la couche existante. */
+  _updateBuildingExaggeration() {
+    if (this.map && this.map.getLayer("buildings-3d")) {
+      this.map.setPaintProperty(
+        "buildings-3d",
+        "fill-extrusion-height",
+        this._buildingHeightExpr()
+      );
+    }
+  }
 
   /** Ajoute / remplace la couche de bâtiments en extrusion 3D. */
   setBuildings(fc) {
@@ -153,8 +181,12 @@ export class Scene3D {
           COLORS.buildingObstruct,
           COLORS.buildingDefault,
         ],
+        // Base posée sur la surface (exagérée) du terrain par MapLibre.
         "fill-extrusion-base": 0,
-        "fill-extrusion-height": ["get", "height"],
+        // Hauteur mise à l'échelle de l'exagération (VISUEL UNIQUEMENT, cf.
+        // _buildingHeightExpr) : à exagération 1.0 l'expression vaut height × 1
+        // et rien ne change par rapport à l'échelle réelle.
+        "fill-extrusion-height": this._buildingHeightExpr(),
         "fill-extrusion-opacity": 0.85,
       },
     });
