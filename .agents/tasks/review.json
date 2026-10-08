@@ -1,0 +1,36 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    {
+      "label": "Overpass User-Agent header dropped in browser",
+      "confidence": "likely",
+      "blocking": false,
+      "detail": "fetch cannot set User-Agent (forbidden header); it is silently ignored in the browser. Harmless because the browser supplies its own UA and the retry+kumi-mirror fallback covers 406/504, but the header gives a false sense of control."
+    },
+    {
+      "label": "Datum mismatch between numeric verdict and 3D occlusion",
+      "confidence": "confirmed",
+      "blocking": false,
+      "detail": "LOS obstacle tops use IGN ground + building height while the 3D view extrudes buildings over the terrarium DEM, so visual occlusion can differ slightly from computed clearance. Acknowledged in the plan."
+    },
+    {
+      "label": "Sampling resolution can miss narrow obstacles",
+      "confidence": "confirmed",
+      "blocking": false,
+      "detail": "Point-in-polygon runs at 200 samples (~42 m apart), so a thin building footprint between samples is not counted. Acceptable approximation; raise N or add segment-polygon intersection for more precision."
+    },
+    {
+      "label": "Large single Overpass fetch and O(buildings x samples) scan",
+      "confidence": "confirmed",
+      "blocking": false,
+      "detail": "~10.7 MB / ~10790 polygons x 200 samples in the browser; bbox pre-filter mitigates but first-load cost/memory are non-trivial. Narrow the corridor if performance suffers."
+    },
+    {
+      "label": "GitHub Pages deployment bundled in",
+      "confidence": "confirmed",
+      "blocking": false,
+      "detail": "HEAD commit adds .github/workflows/pages.yml, CNAME, and .nojekyll, unrelated to the LOS logic. Harmless static hosting."
+    }
+  ],
+  "reviewDoc": "/Users/gautric/Source/divers/laser/.agents/tasks/review.md"
+}
