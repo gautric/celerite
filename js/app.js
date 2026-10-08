@@ -15,7 +15,7 @@ import {
 import { haversine, bearing, interpolatePath } from "./geo.js";
 import { fetchBuildings, fetchElevations } from "./data.js";
 import { analyze } from "./los.js";
-import { Scene3D } from "./scene3d.js";
+import { Scene3D, normalizeBearing } from "./scene3d.js";
 import { renderProfile } from "./chart2d.js";
 
 // --- État applicatif (cache mémoire) ---
@@ -140,6 +140,9 @@ async function boot() {
     return;
   }
 
+  // Boussole 360° : câblée après init (elle a besoin de la carte MapLibre).
+  wireHeadingCompass();
+
   // Récupération parallèle des données (bâtiments + élévations).
   setStatus("Chargement des données (bâtiments + élévations)…");
   let buildings, groundZ;
@@ -225,16 +228,6 @@ function wireControls() {
       });
     });
 
-  // Boussole : oriente la caméra 3D vers un cap cardinal. Seul le bearing
-  // change (pitch, centre et zoom préservés). N=0, E=90, S=180, O=270
-  // (convention MapLibre : bearing = direction affichée en haut de la vue).
-  document.querySelectorAll("#compass .compass-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (!state.scene) return;
-      state.scene.orientTo(Number(btn.dataset.bearing));
-    });
-  });
-
   $("toggle-buildings").addEventListener("change", (e) => {
     if (state.scene) state.scene.setBuildingsVisible(e.target.checked);
   });
@@ -246,6 +239,155 @@ function wireControls() {
   });
   $("toggle-profil").addEventListener("change", (e) => {
     $("profil").classList.toggle("collapsed", !e.target.checked);
+  });
+}
+
+// --- Boussole 360° (cadran circulaire) ---
+
+// Noms cardinaux français (O = Ouest) par secteurs de 45°.
+const CARDINALS = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"];
+const cardinalOf = (b) => CARDINALS[Math.round(b / 45) % 8];
+
+/**
+ * Ramène un écart d'angles dans ]-180, +180]. C'est LA fonction qui rend la
+ * rotation continue : entre deux événements pointeur, l'écart brut peut valoir
+ * +359° au passage 359°→0°, on le lit alors comme -1°. Aucun saut, aucune
+ * butée, le cadran traverse le nord dans les deux sens indéfiniment.
+ */
+function shortestAngleDelta(d) {
+  return ((((d + 180) % 360) + 360) % 360) - 180;
+}
+
+/**
+ * Câble le cadran de boussole : glisser continu sur 360° (Pointer Events, donc
+ * souris / stylet / tactile), synchronisation deux sens avec la caméra, lecture
+ * numérique du cap, double-clic = retour au nord, pilotage clavier.
+ * À appeler APRÈS l'initialisation de la scène (la carte doit exister).
+ */
+function wireHeadingCompass() {
+  const dial = $("heading-compass");
+  const rose = $("hc-rose");
+  const value = $("hc-value");
+  if (!dial || !rose || !state.scene) return;
+
+  // Garde anti-boucle : pendant le glissement, c'est le cadran qui pilote la
+  // carte ; on ignore donc les événements "rotate"/"move" qu'il provoque, pour
+  // ne pas réécrire la rotation en cours depuis la carte.
+  let isDragging = false;
+  // Angle pointeur du dernier événement et cap accumulé (NON borné : il peut
+  // dépasser 360° ou passer sous 0°, on ne normalise qu'à l'affichage/au réglage).
+  let lastPointerAngle = 0;
+  let dragBearing = 0;
+
+  /**
+   * Angle du pointeur autour du centre du cadran, en degrés, 0 = haut et
+   * croissant dans le sens horaire (même convention que le cap MapLibre).
+   */
+  function pointerAngle(ev) {
+    const r = dial.getBoundingClientRect();
+    const dx = ev.clientX - (r.left + r.width / 2);
+    const dy = ev.clientY - (r.top + r.height / 2);
+    return (Math.atan2(dx, -dy) * 180) / Math.PI;
+  }
+
+  /** Rafraîchit la rose, la lecture numérique et les attributs ARIA. */
+  function render(bearing) {
+    const b = normalizeBearing(bearing);
+    // La rose tourne de -cap : le N du cadran pointe vers le nord à l'écran.
+    rose.setAttribute("transform", `rotate(${(-b).toFixed(2)})`);
+    const deg = Math.round(b) % 360;
+    const card = cardinalOf(b);
+    value.textContent = `${deg}° ${card}`;
+    dial.setAttribute("aria-valuenow", String(deg));
+    dial.setAttribute("aria-valuetext", `${deg} degrés, ${card}`);
+  }
+
+  /** Applique un cap à la caméra sans animation, puis rafraîchit le cadran. */
+  function apply(bearing) {
+    const b = normalizeBearing(bearing);
+    state.scene.setBearing(b);
+    render(b);
+  }
+
+  // Le widget est un enfant du conteneur de la carte : on empêche les
+  // événements souris/tactile/molette de remonter aux gestionnaires MapLibre,
+  // sinon glisser le cadran déplacerait aussi la carte (et le double-clic
+  // zoomerait). La navigation libre sur la carte elle-même reste intacte.
+  for (const type of [
+    "mousedown",
+    "touchstart",
+    "wheel",
+    "contextmenu",
+    "keydown",
+  ]) {
+    dial.addEventListener(type, (ev) => ev.stopPropagation());
+  }
+
+  // Glissement continu : atan2 pour l'angle pointeur, cumul des écarts courts
+  // pour franchir 0°/360° sans discontinuité, setBearing immédiat pour suivre
+  // le pointeur sans latence (pitch / centre / zoom préservés).
+  dial.addEventListener("pointerdown", (ev) => {
+    ev.stopPropagation();
+    ev.preventDefault();
+    isDragging = true;
+    dragBearing = state.scene.getBearing();
+    lastPointerAngle = pointerAngle(ev);
+    dial.classList.add("is-dragging");
+    dial.setPointerCapture(ev.pointerId);
+    dial.focus();
+  });
+
+  dial.addEventListener("pointermove", (ev) => {
+    if (!isDragging) return;
+    const a = pointerAngle(ev);
+    const delta = shortestAngleDelta(a - lastPointerAngle);
+    lastPointerAngle = a;
+    // La rose suit le pointeur ("on attrape le cadran et on le tourne") : la
+    // rose tournant de -cap, faire avancer la rose de delta revient à retirer
+    // delta au cap. Le cumul n'est jamais borné ni accroché aux cardinaux.
+    dragBearing -= delta;
+    apply(dragBearing);
+  });
+
+  const endDrag = (ev) => {
+    if (!isDragging) return;
+    isDragging = false;
+    dial.classList.remove("is-dragging");
+    if (ev && dial.hasPointerCapture(ev.pointerId)) {
+      dial.releasePointerCapture(ev.pointerId);
+    }
+  };
+  dial.addEventListener("pointerup", endDrag);
+  dial.addEventListener("pointercancel", endDrag);
+
+  // Double-clic : retour animé au nord (seul le cap change).
+  dial.addEventListener("dblclick", (ev) => {
+    ev.stopPropagation();
+    ev.preventDefault();
+    state.scene.orientTo(0);
+  });
+
+  // Clavier : flèches gauche/droite = 1° (5° avec Maj), Début = nord.
+  dial.addEventListener("keydown", (ev) => {
+    const step = ev.shiftKey ? 5 : 1;
+    if (ev.key === "ArrowLeft") {
+      apply(state.scene.getBearing() - step);
+    } else if (ev.key === "ArrowRight") {
+      apply(state.scene.getBearing() + step);
+    } else if (ev.key === "Home") {
+      state.scene.orientTo(0);
+    } else {
+      return;
+    }
+    ev.preventDefault();
+  });
+
+  // Synchronisation dans l'autre sens : toute rotation de la caméra faite
+  // ailleurs (clic-droit/ctrl-glisser, boussole MapLibre, maj+flèches) fait
+  // tourner la rose. La garde isDragging évite la boucle de rétroaction.
+  state.scene.onBearingChange((b) => {
+    if (isDragging) return;
+    render(b);
   });
 }
 

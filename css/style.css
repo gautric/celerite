@@ -230,41 +230,88 @@ body {
   font-size: 10px;
 }
 
-/* Boussole : orientation cardinale de la caméra 3D, superposée à la carte
+/* Boussole 360° : cadran circulaire orientable en continu, superposé à la carte
    (haut à gauche, pour ne pas recouvrir le NavigationControl en haut à droite). */
-.compass-ctrl {
+.heading-compass {
   position: absolute;
   top: 10px;
   left: 10px;
   z-index: 2;
-  display: grid;
-  grid-template-columns: repeat(2, 34px);
-  grid-auto-rows: 34px;
-  gap: 4px;
-  padding: 6px;
+  width: 96px;
+  padding: 6px 6px 4px;
   background: rgba(24, 34, 48, 0.85);
   border: 1px solid #2a3647;
-  border-radius: 8px;
+  border-radius: 10px;
+  text-align: center;
+  /* Curseur signalant la préhension du cadran. */
+  cursor: grab;
+  /* Indispensable pour que les Pointer Events tactiles ne soient pas
+     interceptés par le défilement/zoom du navigateur pendant la rotation. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.compass-btn {
-  padding: 0;
-  background: var(--card);
-  color: var(--text);
-  border: 1px solid #2a3647;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.compass-btn:hover {
-  filter: brightness(1.15);
+.heading-compass.is-dragging {
+  cursor: grabbing;
   border-color: var(--accent);
+}
+.heading-compass:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.hc-dial {
+  display: block;
+  width: 84px;
+  height: 84px;
+  margin: 0 auto;
+}
+.hc-face {
+  fill: rgba(15, 22, 32, 0.72);
+  stroke: #2a3647;
+  stroke-width: 1;
+}
+.hc-index {
+  fill: var(--accent);
+}
+.hc-tick {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+.hc-tick--major {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+.hc-label {
+  fill: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+}
+.hc-label--n {
+  fill: var(--blocked);
+}
+.hc-needle-n {
+  fill: var(--blocked);
+}
+.hc-needle-s {
+  fill: var(--muted);
+}
+.hc-pivot {
+  fill: var(--text);
+}
+.hc-value {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
 
 /* Aide-mémoire discret des interactions de navigation, sous la boussole. */
 .nav-hint {
   position: absolute;
-  top: 92px;
+  top: 124px;
   left: 10px;
   z-index: 2;
   max-width: 190px;

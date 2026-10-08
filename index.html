@@ -33,21 +33,79 @@
     <main id="layout">
       <!-- Scène 3D -->
       <div id="map">
-        <!-- Boussole : oriente la caméra 3D vers un cap cardinal. Convention
-             MapLibre (bearing = direction de la boussole affichée en haut de la
-             vue) : N=0, E=90, S=180, O=270. Seul le bearing change (pitch,
-             centre et zoom préservés). Placée en haut à gauche pour ne pas
-             recouvrir le NavigationControl MapLibre (haut à droite). -->
-        <div id="compass" class="compass-ctrl" role="group" aria-label="Orientation de la caméra">
-          <button type="button" class="compass-btn" data-bearing="0" title="Nord" aria-label="Nord">N</button>
-          <button type="button" class="compass-btn" data-bearing="90" title="Est" aria-label="Est">E</button>
-          <button type="button" class="compass-btn" data-bearing="180" title="Sud" aria-label="Sud">S</button>
-          <button type="button" class="compass-btn" data-bearing="270" title="Ouest" aria-label="Ouest">O</button>
+        <!-- Boussole 360° : véritable cadran circulaire orientable en continu.
+             Glisser le cadran (souris, stylet ou doigt) fait tourner la rose des
+             vents ET le cap de la caméra MapLibre en direct, sur 360° complets,
+             sans butée ni accrochage aux points cardinaux (le passage 359°→0°
+             est continu). Le cadran reflète aussi toute rotation faite ailleurs
+             (clic-droit/ctrl-glisser sur la carte, boussole du
+             NavigationControl, maj+flèches). Double-clic (ou touche Début) =
+             retour au nord. Convention MapLibre : bearing = direction affichée
+             en haut de la vue (N=0, E=90, S=180, O=270) ; seul le bearing
+             change (pitch, centre et zoom préservés). Placée en haut à gauche
+             pour ne pas recouvrir le NavigationControl (haut à droite). -->
+        <div
+          id="heading-compass"
+          class="heading-compass"
+          role="slider"
+          tabindex="0"
+          aria-label="Orientation de la caméra (cap)"
+          aria-valuemin="0"
+          aria-valuemax="360"
+          aria-valuenow="0"
+          aria-valuetext="0 degrés, N"
+          title="Glisser pour pivoter la vue sur 360° · double-clic : nord"
+        >
+          <svg class="hc-dial" viewBox="-50 -50 100 100" aria-hidden="true" focusable="false">
+            <circle class="hc-face" cx="0" cy="0" r="40" />
+            <!-- Index fixe : repère de lecture du cap, en haut du cadran. -->
+            <polygon class="hc-index" points="0,-41 -4.5,-49 4.5,-49" />
+            <!-- Rose des vents : SEUL élément pivoté, par rotate(-cap), afin
+                 que le N pointe vers le nord géographique à l'écran. -->
+            <g id="hc-rose" class="hc-rose" transform="rotate(0)">
+              <!-- Graduations majeures tous les 45°. -->
+              <line class="hc-tick hc-tick--major" x1="0" y1="-38" x2="0" y2="-29" transform="rotate(0)" />
+              <line class="hc-tick hc-tick--major" x1="0" y1="-38" x2="0" y2="-29" transform="rotate(45)" />
+              <line class="hc-tick hc-tick--major" x1="0" y1="-38" x2="0" y2="-29" transform="rotate(90)" />
+              <line class="hc-tick hc-tick--major" x1="0" y1="-38" x2="0" y2="-29" transform="rotate(135)" />
+              <line class="hc-tick hc-tick--major" x1="0" y1="-38" x2="0" y2="-29" transform="rotate(180)" />
+              <line class="hc-tick hc-tick--major" x1="0" y1="-38" x2="0" y2="-29" transform="rotate(225)" />
+              <line class="hc-tick hc-tick--major" x1="0" y1="-38" x2="0" y2="-29" transform="rotate(270)" />
+              <line class="hc-tick hc-tick--major" x1="0" y1="-38" x2="0" y2="-29" transform="rotate(315)" />
+              <!-- Graduations mineures tous les 15°. -->
+              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(15)" />
+              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(30)" />
+              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(60)" />
+              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(75)" />
+              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(105)" />
+              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(120)" />
+              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(150)" />
+              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(165)" />
+              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(195)" />
+              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(210)" />
+              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(240)" />
+              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(255)" />
+              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(285)" />
+              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(300)" />
+              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(330)" />
+              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(345)" />
+              <!-- Points cardinaux (O = Ouest). -->
+              <text class="hc-label hc-label--n" x="0" y="-22" text-anchor="middle" dominant-baseline="central">N</text>
+              <text class="hc-label" x="22" y="0" text-anchor="middle" dominant-baseline="central">E</text>
+              <text class="hc-label" x="0" y="22" text-anchor="middle" dominant-baseline="central">S</text>
+              <text class="hc-label" x="-22" y="0" text-anchor="middle" dominant-baseline="central">O</text>
+              <!-- Aiguille : pointe rouge vers le nord, contrepoids vers le sud. -->
+              <polygon class="hc-needle-n" points="0,-15 -3.5,0 3.5,0" />
+              <polygon class="hc-needle-s" points="0,15 -3.5,0 3.5,0" />
+              <circle class="hc-pivot" cx="0" cy="0" r="1.8" />
+            </g>
+          </svg>
+          <span id="hc-value" class="hc-value">0° N</span>
         </div>
         <!-- Aide-mémoire discret des interactions de navigation 3D. -->
         <p id="nav-hint" class="nav-hint">
           Clic-glisser : déplacer · Ctrl/clic-droit-glisser : pivoter/incliner ·
-          molette : zoom
+          molette : zoom · cadran ci-dessus : cap sur 360°
         </p>
       </div>
 

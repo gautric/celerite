@@ -18,6 +18,13 @@ import {
   SITE_B,
 } from "./config.js";
 
+// Normalise un cap (degrés) dans [0, 360). Tolère les valeurs négatives et
+// les tours accumulés : c'est ce qui permet une rotation continue sur 360°
+// sans discontinuité au passage 0°/360°.
+function normalizeBearing(b) {
+  return ((b % 360) + 360) % 360;
+}
+
 // Convertit "#rrggbb" -> [r,g,b].
 function hexToRgb(hex) {
   const h = hex.replace("#", "");
@@ -138,8 +145,8 @@ export class Scene3D {
     // et un clic réinitialise le cap au nord (et le pitch à plat). Les
     // interactions MapLibre dragRotate / touchZoomRotate (actives par défaut, non
     // désactivées) permettent aussi d'orienter la vue par clic-droit / ctrl-glisser
-    // directement sur la carte. Placée en haut à droite : ne recouvre pas les
-    // boutons cardinaux N/E/S/O (haut à gauche), complémentaires.
+    // directement sur la carte. Placée en haut à droite : ne recouvre pas le
+    // cadran de boussole 360° (haut à gauche), complémentaire.
     this.map.addControl(
       new maplibregl.NavigationControl({
         showCompass: true,
@@ -301,6 +308,35 @@ export class Scene3D {
     this.map.easeTo({ bearing, duration: 500 });
   }
 
+  /** Cap courant de la caméra, normalisé dans [0, 360). */
+  getBearing() {
+    return this.map ? normalizeBearing(this.map.getBearing()) : 0;
+  }
+
+  /**
+   * Règle le cap IMMÉDIATEMENT, sans animation : utilisé pendant le glissement
+   * du cadran de boussole pour que la vue suive le pointeur sans latence.
+   * setBearing ne touche que le cap — pitch, centre et zoom sont préservés.
+   */
+  setBearing(bearing) {
+    if (!this.map) return;
+    this.map.setBearing(normalizeBearing(bearing));
+  }
+
+  /**
+   * S'abonne aux changements de cap de la caméra, quelle qu'en soit la cause
+   * (glisser-pivoter sur la carte, boussole du NavigationControl, clavier,
+   * easeTo/setBearing). Le callback reçoit le cap normalisé dans [0, 360) et
+   * est appelé une première fois immédiatement pour initialiser l'affichage.
+   */
+  onBearingChange(cb) {
+    if (!this.map) return;
+    const emit = () => cb(this.getBearing());
+    this.map.on("rotate", emit);
+    this.map.on("move", emit);
+    emit();
+  }
+
   setTerrainVisible(visible) {
     if (!this.map) return;
     this.map.setTerrain(
@@ -424,4 +460,4 @@ export class Scene3D {
   }
 }
 
-export { hexToRgb };
+export { hexToRgb, normalizeBearing };
