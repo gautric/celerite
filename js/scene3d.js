@@ -59,7 +59,20 @@ export class Scene3D {
       zoom: 12,
       pitch: 62, // vue inclinée pour percevoir les altitudes
       bearing: 55, // orienté approximativement de A vers B
+      // Navigation libre dans tous les sens : on peut incliner du zénith
+      // (pitch 0, vue de dessus) jusqu'au quasi-horizon (pitch 85, maximum
+      // MapLibre) pour voir le faisceau presque de profil. minPitch reste 0.
       maxPitch: 85,
+      minPitch: 0,
+      // Zoom large : dézoomer loin (vue régionale) comme zoomer au ras des toits,
+      // sans borne de déplacement (aucun maxBounds) -> pan illimité.
+      minZoom: 2,
+      maxZoom: 20,
+      // Rotation/inclinaison à la souris et au clavier activées explicitement
+      // (actives par défaut, on les force pour garantir la liberté de navigation).
+      dragRotate: true,
+      pitchWithRotate: true,
+      keyboard: true,
       antialias: true,
       style: {
         version: 8,
@@ -90,6 +103,27 @@ export class Scene3D {
         ],
       },
     });
+
+    // Navigation libre garantie : on (ré)active explicitement chaque gestionnaire
+    // d'interaction MapLibre (tous actifs par défaut, aucun n'est désactivé
+    // ailleurs). dragPan = déplacement ; dragRotate = pivot/inclinaison au
+    // clic-droit / ctrl-glisser ; scrollZoom = molette ; boxZoom = zoom par
+    // rectangle ; doubleClickZoom ; keyboard = flèches (déplacer) + maj+flèches
+    // (pivoter/incliner) ; touchZoomRotate + touchPitch = gestes tactiles.
+    for (const h of [
+      "dragPan",
+      "dragRotate",
+      "scrollZoom",
+      "boxZoom",
+      "doubleClickZoom",
+      "keyboard",
+      "touchZoomRotate",
+      "touchPitch",
+    ]) {
+      if (this.map[h] && typeof this.map[h].enable === "function") {
+        this.map[h].enable();
+      }
+    }
 
     // Boussole MapLibre orientable À LA SOURIS sur TOUS les axes. Avec
     // visualizePitch:true + showCompass:true, un glisser sur la boussole change
