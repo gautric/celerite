@@ -212,6 +212,16 @@ function wireControls() {
     if (state.scene) state.scene.setExaggeration(v);
   });
 
+  // Boussole : oriente la caméra 3D vers un cap cardinal. Seul le bearing
+  // change (pitch, centre et zoom préservés). N=0, E=90, S=180, O=270
+  // (convention MapLibre : bearing = direction affichée en haut de la vue).
+  document.querySelectorAll("#compass .compass-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (!state.scene) return;
+      state.scene.orientTo(Number(btn.dataset.bearing));
+    });
+  });
+
   $("toggle-buildings").addEventListener("change", (e) => {
     if (state.scene) state.scene.setBuildingsVisible(e.target.checked);
   });

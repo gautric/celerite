@@ -32,7 +32,19 @@
 
     <main id="layout">
       <!-- Scène 3D -->
-      <div id="map"></div>
+      <div id="map">
+        <!-- Boussole : oriente la caméra 3D vers un cap cardinal. Convention
+             MapLibre (bearing = direction de la boussole affichée en haut de la
+             vue) : N=0, E=90, S=180, O=270. Seul le bearing change (pitch,
+             centre et zoom préservés). Placée en haut à gauche pour ne pas
+             recouvrir le NavigationControl MapLibre (haut à droite). -->
+        <div id="compass" class="compass-ctrl" role="group" aria-label="Orientation de la caméra">
+          <button type="button" class="compass-btn" data-bearing="0" title="Nord" aria-label="Nord">N</button>
+          <button type="button" class="compass-btn" data-bearing="90" title="Est" aria-label="Est">E</button>
+          <button type="button" class="compass-btn" data-bearing="180" title="Sud" aria-label="Sud">S</button>
+          <button type="button" class="compass-btn" data-bearing="270" title="Ouest" aria-label="Ouest">O</button>
+        </div>
+      </div>
 
       <!-- Panneau résultats + contrôles -->
       <aside id="panel">

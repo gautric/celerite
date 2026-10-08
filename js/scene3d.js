@@ -214,6 +214,18 @@ export class Scene3D {
     }
   }
 
+  /**
+   * Oriente la caméra vers un cap cardinal (bearing MapLibre) avec une
+   * animation douce. Convention MapLibre : bearing = direction de la boussole
+   * affichée en haut de la vue (0 = nord en haut, 90 = est, 180 = sud, 270 =
+   * ouest). Seul le bearing change : le pitch, le centre et le zoom courants
+   * sont préservés (easeTo ne modifie que les propriétés passées).
+   */
+  orientTo(bearing) {
+    if (!this.map) return;
+    this.map.easeTo({ bearing, duration: 500 });
+  }
+
   setTerrainVisible(visible) {
     if (!this.map) return;
     this.map.setTerrain(
