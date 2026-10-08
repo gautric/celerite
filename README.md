@@ -7,6 +7,12 @@ tir laser (ligne de visée) entre la **Grande Coupole de l'Observatoire de Meudo
 Paris**. Le faisceau est tracé à son **altitude réelle** et confronté au relief
 et aux bâtiments pour déterminer s'il est **dégagé** ou **obstrué**.
 
+> 🔗 **Démo en ligne** : https://g.autric.net/celerite/
+
+C'est la version **2D (profil en coupe) et 3D (scène géospatiale)** du *tir laser*
+du site anniversaire de l'Observatoire de Paris —
+[célérité, 350 ans de Rømer](https://celerite.observatoiredeparis.psl.eu/).
+
 ## L'expérience
 
 - **Site A — émetteur** : Meudon, Grande Coupole. lat 48.8049, lon 2.2305,
