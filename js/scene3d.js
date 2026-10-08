@@ -91,7 +91,23 @@ export class Scene3D {
       },
     });
 
-    this.map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }));
+    // Boussole MapLibre orientable À LA SOURIS sur TOUS les axes. Avec
+    // visualizePitch:true + showCompass:true, un glisser sur la boussole change
+    // à la fois le cap (bearing, glisser gauche/droite) ET l'inclinaison (pitch,
+    // glisser haut/bas) ; l'aiguille s'incline pour visualiser le pitch courant,
+    // et un clic réinitialise le cap au nord (et le pitch à plat). Les
+    // interactions MapLibre dragRotate / touchZoomRotate (actives par défaut, non
+    // désactivées) permettent aussi d'orienter la vue par clic-droit / ctrl-glisser
+    // directement sur la carte. Placée en haut à droite : ne recouvre pas les
+    // boutons cardinaux N/E/S/O (haut à gauche), complémentaires.
+    this.map.addControl(
+      new maplibregl.NavigationControl({
+        showCompass: true,
+        showZoom: true,
+        visualizePitch: true,
+      }),
+      "top-right"
+    );
 
     return new Promise((resolve, reject) => {
       this.map.on("error", (e) => {
