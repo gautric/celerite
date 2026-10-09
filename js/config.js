@@ -14,7 +14,7 @@ export const SITE_A = {
   altitude: 162,
   // Hauteur de base (socle / pied d'instrument) ajoutée sous le point
   // d'émission, en mètres. Relève d'autant l'extrémité A du faisceau.
-  base: 20,
+  base: 0,
 };
 
 export const SITE_B = {
@@ -27,7 +27,7 @@ export const SITE_B = {
   solApprox: 67,
   // Hauteur de base (socle / pied d'instrument) ajoutée au-dessus du sol IGN
   // en B, en mètres. Relève d'autant l'extrémité B du faisceau.
-  base: 20,
+  base: 10,
 };
 
 // Hauteur de coupole ajoutée au sol IGN pour l'altitude récepteur par défaut.
