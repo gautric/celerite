@@ -109,8 +109,9 @@ par défaut est calculée, puis la ligne de visée est analysée et affichée.
 ## Structure du projet
 
 ```
-index.html          page + chargement des CDN et du module app.js
+index.html          page + métadonnées de partage + chargement des CDN
 css/style.css        mise en page (3D plein cadre + panneaux)
+assets/              carte sociale (SVG source + PNG 1200x630) et favicon
 js/config.js         constantes du scénario, endpoints, couleurs
 js/geo.js            haversine, azimut, interpolation, point-dans-polygone
 js/data.js           Overpass (bâtiments) + IGN/Open-Elevation (profil)
@@ -119,3 +120,27 @@ js/scene3d.js        MapLibre (terrain, bâtiments) + deck.gl (faisceau 3D)
 js/chart2d.js        profil en coupe 2D (Chart.js)
 js/app.js            orchestration, UI, cache mémoire
 ```
+
+## Aperçu lors d'un partage (LinkedIn, Twitter/X, Slack)
+
+`index.html` embarque les métadonnées **Open Graph** et **Twitter Card** : coller
+l'URL dans LinkedIn, Twitter/X, Slack, Discord, WhatsApp, Mastodon ou Teams
+affiche une vignette large avec titre, description et image.
+
+- Image servie : `assets/og-image.png` — **PNG 1200 × 630** (ratio 1.91:1), le
+  format attendu par `summary_large_image` et par LinkedIn.
+- Source vectorielle : `assets/social-card.svg`. Régénérer le PNG après
+  modification (nécessite `brew install librsvg`) :
+
+  ```bash
+  make social
+  ```
+
+- `og:url` et `og:image` sont des **URL absolues** vers `https://celerite.autric.net/`
+  (le domaine du fichier `CNAME`). Si le site est déployé ailleurs, mettre ces
+  deux valeurs à jour, sinon l'aperçu restera vide.
+- Les plateformes **mettent les aperçus en cache**. Après un changement, forcer
+  le rafraîchissement avec le *LinkedIn Post Inspector*
+  (https://www.linkedin.com/post-inspector/), le *Twitter Card Validator*, ou en
+  partageant l'URL suffixée `?v=2`. Slack rafraîchit de lui-même après quelques
+  dizaines de minutes.

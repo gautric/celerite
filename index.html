@@ -5,6 +5,104 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Tir laser Meudon → Paris Arago — Ligne de visée 3D</title>
 
+    <!-- ===================================================================
+         Métadonnées de partage (Open Graph / Twitter Card).
+         Lues par LinkedIn, Twitter/X, Slack, Discord, Facebook, WhatsApp,
+         Mastodon, Teams… Slack et LinkedIn consomment Open Graph ; Twitter/X
+         utilise les balises `twitter:` et retombe sur Open Graph sinon.
+
+         Règles à respecter si l'on modifie ces valeurs :
+         - og:url et og:image DOIVENT être des URL absolues (https://…) :
+           les crawlers ne résolvent pas les chemins relatifs de façon fiable.
+         - L'image est un PNG 1200 × 630 (ratio 1.91:1, < 5 Mo), le format
+           attendu par `summary_large_image` et par LinkedIn.
+         - L'image est régénérée depuis assets/social-card.svg via
+           `make social` ; ne pas éditer le PNG à la main.
+         - Les aperçus sont mis en cache côté plateforme : après un changement,
+           forcer le rafraîchissement (LinkedIn Post Inspector, Twitter Card
+           Validator, ou ajouter `?v=2` à l'URL partagée).
+         =================================================================== -->
+    <link rel="canonical" href="https://celerite.autric.net/" />
+    <meta
+      name="description"
+      content="Visualisation 3D géospatiale d'un tir laser entre la Grande Coupole de l'Observatoire de Meudon (162 m) et la Coupole Arago de l'Observatoire de Paris : le faisceau à altitude réelle est confronté au relief et aux bâtiments pour dire s'il est dégagé ou obstrué."
+    />
+    <meta name="author" content="Guillaume Autric" />
+    <meta
+      name="keywords"
+      content="ligne de visée, line of sight, laser, Observatoire de Meudon, Observatoire de Paris, Coupole Arago, MapLibre, deck.gl, 3D, OpenStreetMap, IGN RGE ALTI, célérité, Rømer"
+    />
+    <meta name="theme-color" content="#101934" />
+
+    <!-- Open Graph (LinkedIn, Slack, Facebook, Discord, WhatsApp, Mastodon) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Tir laser Meudon → Paris" />
+    <meta property="og:locale" content="fr_FR" />
+    <meta property="og:url" content="https://celerite.autric.net/" />
+    <meta
+      property="og:title"
+      content="Tir laser Meudon → Paris : la ligne de visée passe-t-elle ?"
+    />
+    <meta
+      property="og:description"
+      content="8,5 km, azimut 66°, émission à 162 m. Le faisceau est tracé à son altitude réelle en 3D et testé contre le relief (IGN RGE ALTI) et 11 000 bâtiments (OpenStreetMap) : verdict DÉGAGÉ ou OBSTRUÉ, avec profil en coupe."
+    />
+    <meta
+      property="og:image"
+      content="https://celerite.autric.net/assets/og-image.png"
+    />
+    <meta
+      property="og:image:secure_url"
+      content="https://celerite.autric.net/assets/og-image.png"
+    />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Schéma nocturne : un faisceau laser rouge-orangé relie la coupole de Meudon, à gauche et en hauteur, à la Coupole Arago de Paris, à droite, au-dessus du relief ; 8,5 km, azimut 66°."
+    />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="Tir laser Meudon → Paris : la ligne de visée passe-t-elle ?"
+    />
+    <meta
+      name="twitter:description"
+      content="8,5 km, azimut 66°, émission à 162 m. Faisceau 3D à altitude réelle confronté au relief IGN et aux bâtiments OSM : DÉGAGÉ ou OBSTRUÉ."
+    />
+    <meta
+      name="twitter:image"
+      content="https://celerite.autric.net/assets/og-image.png"
+    />
+    <meta
+      name="twitter:image:alt"
+      content="Faisceau laser reliant la coupole de Meudon à la Coupole Arago de Paris, au-dessus du relief, sur 8,5 km."
+    />
+
+    <!-- Icônes -->
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+    <link rel="apple-touch-icon" href="assets/og-image.png" />
+
+    <!-- Données structurées (moteurs de recherche ; ignorées par les aperçus) -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Tir laser Meudon → Paris (Coupole Arago)",
+        "url": "https://celerite.autric.net/",
+        "applicationCategory": "EducationalApplication",
+        "operatingSystem": "Navigateur web",
+        "inLanguage": "fr",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+        "description": "Visualisation 3D géospatiale d'une ligne de visée entre la Grande Coupole de l'Observatoire de Meudon et la Coupole Arago de l'Observatoire de Paris, avec profil en coupe et verdict de dégagement.",
+        "image": "https://celerite.autric.net/assets/og-image.png"
+      }
+    </script>
+
     <!-- MapLibre GL JS (fond de carte + terrain 3D + bâtiments extrudés) -->
     <link
       rel="stylesheet"
