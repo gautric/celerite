@@ -182,14 +182,16 @@
             <label><input id="toggle-buildings" type="checkbox" checked /> Bâtiments</label>
             <label><input id="toggle-terrain" type="checkbox" checked /> Terrain 3D</label>
             <label><input id="toggle-beam" type="checkbox" checked /> Faisceau</label>
-            <label><input id="toggle-profil" type="checkbox" checked /> Profil 2D</label>
+            <label><input id="toggle-profil" type="checkbox" /> Profil 2D</label>
           </fieldset>
         </section>
       </aside>
     </main>
 
-    <!-- Profil en coupe 2D (repliable) -->
-    <section id="profil">
+    <!-- Profil en coupe 2D (repliable). Replié par défaut : la case
+         #toggle-profil est décochée au chargement, donc la section porte
+         d'emblée la classe "collapsed" pour rester cohérente avec elle. -->
+    <section id="profil" class="collapsed">
       <h2>Profil en coupe (altitude vs distance)</h2>
       <div class="chart-wrap"><canvas id="chart"></canvas></div>
     </section>
