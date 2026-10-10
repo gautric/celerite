@@ -25,6 +25,34 @@ function normalizeBearing(b) {
   return ((b % 360) + 360) % 360;
 }
 
+// Bornes de l'inclinaison (pitch) de la caméra, en degrés.
+//  - PITCH_MIN = 0  : vue strictement de dessus (zénith), la carte est à plat ;
+//  - PITCH_MAX = 90 : vue rasante, la caméra regarde l'horizon.
+// 90° est réellement accepté par MapLibre GL JS 5.12.0 : setMaxPitch ne refuse
+// qu'une valeur SUPÉRIEURE À 180 (« maxPitch must be less than or equal to
+// 180 ») ou inférieure à minPitch ; le plafond historique de 85° hérité de
+// Mapbox GL a été levé en v5. On ne force donc aucune valeur refusée par l'API,
+// et aucun clamp de repli à 85 n'est nécessaire.
+// Réserve d'usage : entre ~85° et 90° la caméra regarde quasiment l'horizon et,
+// terrain 3D activé, elle demande beaucoup de tuiles — le rendu peut devenir
+// mou sur machine modeste. C'est une dégradation de confort, pas un refus de
+// l'API : on garde 90.
+const PITCH_MIN = 0;
+const PITCH_MAX = 90;
+
+/**
+ * Borne une inclinaison (degrés) dans [PITCH_MIN, PITCH_MAX].
+ * À NE PAS CONFONDRE avec normalizeBearing : un cap s'ENROULE (359° + 2° = 1°),
+ * une inclinaison se BORNE (90° + 2° reste 90°). Aucun wrap-around ici : passé
+ * la butée, la valeur reste collée à la butée, ce qui évite le saut brutal
+ * « vue rasante -> vue de dessus » au milieu d'un geste.
+ * Une entrée non finie (NaN, undefined) retombe sur PITCH_MIN, valeur sûre.
+ */
+function clampPitch(p) {
+  if (!Number.isFinite(p)) return PITCH_MIN;
+  return Math.min(PITCH_MAX, Math.max(PITCH_MIN, p));
+}
+
 // Convertit "#rrggbb" -> [r,g,b].
 function hexToRgb(hex) {
   const h = hex.replace("#", "");
@@ -73,10 +101,12 @@ export class Scene3D {
       pitch: 62, // vue inclinée pour percevoir les altitudes
       bearing: 55, // orienté approximativement de A vers B
       // Navigation libre dans tous les sens : on peut incliner du zénith
-      // (pitch 0, vue de dessus) jusqu'au quasi-horizon (pitch 85, maximum
-      // MapLibre) pour voir le faisceau presque de profil. minPitch reste 0.
-      maxPitch: 85,
-      minPitch: 0,
+      // (pitch 0, vue de dessus) jusqu'à l'horizon (pitch 90) pour voir le
+      // faisceau de profil. Les deux bornes viennent de PITCH_MIN/PITCH_MAX et
+      // sont bien acceptées par MapLibre 5.12.0 (voir le commentaire de ces
+      // constantes : seule une valeur au-delà de 180 est refusée).
+      maxPitch: PITCH_MAX,
+      minPitch: PITCH_MIN,
       // Zoom large : dézoomer loin (vue régionale) comme zoomer au ras des toits,
       // sans borne de déplacement (aucun maxBounds) -> pan illimité.
       minZoom: 2,
@@ -337,6 +367,41 @@ export class Scene3D {
     emit();
   }
 
+  /** Inclinaison courante de la caméra, bornée dans [PITCH_MIN, PITCH_MAX]. */
+  getPitch() {
+    return this.map ? clampPitch(this.map.getPitch()) : PITCH_MIN;
+  }
+
+  /**
+   * Règle l'inclinaison IMMÉDIATEMENT, sans animation : utilisé pendant le
+   * glissement Maj + souris sur le cadran de boussole pour que la vue suive le
+   * pointeur sans latence (même approche que setBearing).
+   * setPitch ne touche QUE l'inclinaison — cap, centre et zoom sont préservés.
+   * La valeur est bornée par clampPitch (jamais enroulée) : MapLibre borne lui
+   * aussi dans [minPitch, maxPitch], mais on borne en amont pour que la valeur
+   * affichée et l'accumulateur du glissement restent cohérents avec la butée.
+   */
+  setPitch(pitch) {
+    if (!this.map) return;
+    this.map.setPitch(clampPitch(pitch));
+  }
+
+  /**
+   * S'abonne aux changements d'inclinaison de la caméra, quelle qu'en soit la
+   * cause (ctrl/clic-droit-glisser sur la carte, boussole du NavigationControl
+   * avec visualizePitch, clavier, easeTo/setPitch). Le callback reçoit
+   * l'inclinaison bornée dans [PITCH_MIN, PITCH_MAX] et est appelé une première
+   * fois immédiatement pour initialiser l'affichage. Miroir exact de
+   * onBearingChange.
+   */
+  onPitchChange(cb) {
+    if (!this.map) return;
+    const emit = () => cb(this.getPitch());
+    this.map.on("pitch", emit);
+    this.map.on("move", emit);
+    emit();
+  }
+
   setTerrainVisible(visible) {
     if (!this.map) return;
     this.map.setTerrain(
@@ -460,4 +525,4 @@ export class Scene3D {
   }
 }
 
-export { hexToRgb, normalizeBearing };
+export { hexToRgb, normalizeBearing, clampPitch, PITCH_MIN, PITCH_MAX };

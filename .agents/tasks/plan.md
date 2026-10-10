@@ -1,251 +1,311 @@
-# Implementation Plan — Laser Meudon → Paris Arago (3D line-of-sight, navigateur)
+# Plan d'implémentation — Inclinaison (pitch) 0°–90° au cadran, avec Maj + glisser
 
-Static front-end 3D web app visualising a scientific line-of-sight ("tir laser") between
-Observatoire de Meudon (Grande Coupole, terrasse @ 162 m) and Observatoire de Paris
-(Coupole Arago). MapLibre GL JS (base map + 3D terrain + fill-extrusion buildings) +
-deck.gl (true-altitude 3D beam with depth occlusion) + Chart.js (2D cross-section).
-No backend, no bundler, no API key/token.
+Worktree : `/Users/gautric/Source/divers/laser/.worktrees/pitch-souris-shift`
+Branche : `pitch-souris-shift` (base `c4bdd26`, propre au moment du plan)
 
-## Decisions already verified against live services (do NOT re-decide)
-
-All of the following were tested live during planning and work key-free with CORS:
-
-- **MapLibre GL JS 5.12.0** (supports 3D terrain + fill-extrusion on terrain + pitch/bearing):
-  - JS `https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.js` (global `maplibregl`)
-  - CSS `https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.css`
-- **deck.gl 9.4.0** standalone UMD (global `deck`): `https://unpkg.com/deck.gl@9.4.0/dist.min.js`.
-  Confirmed this bundle exports `deck.MapLibreOverlay`, `deck.MapboxOverlay`, `deck.LineLayer`,
-  `deck.PathLayer`, `deck.ColumnLayer`, `deck.ScatterplotLayer`.
-  **Use `deck.MapLibreOverlay` with `interleaved: true`** — this is deck.gl's recommended
-  integration for MapLibre v5 (newer than the `MapboxOverlay` the brief mentioned; both exist in
-  the bundle, MapLibreOverlay is the correct one for MapLibre). Interleaved mode shares MapLibre's
-  WebGL2 context and depth buffer, which is what makes the beam occlude correctly against terrain
-  and buildings.
-- **Chart.js 4.4.4** (global `Chart`): `https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js`
-- **3D terrain DEM (raster-dem, encoding "terrarium"):**
-  `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png`
-  (tested `.../terrarium/12/2074/1409.png` → HTTP 200, 256×256 PNG). tileSize 256, maxzoom 15.
-  Attribution: Terrain tiles courtesy of AWS Open Data (elevation-tiles-prod).
-- **OSM raster base tiles:** `https://tile.openstreetmap.org/{z}/{x}/{y}.png`, tileSize 256,
-  attribution "© OpenStreetMap contributors".
-- **Buildings — Overpass API.** Endpoint `https://overpass-api.de/api/interpreter` (POST),
-  fallback mirror `https://overpass.kumi.systems/api/interpreter`. **A `User-Agent` header is
-  required** — without it the server returns HTTP 406. The exact validated query (300 m corridor
-  around the A→B segment) returned ~11 000 building ways (~10.7 MB), with ~2984 `building:levels`
-  tags and few explicit `height` tags. Query text (single line, URL-encoded as `data=`):
-  ```
-  [out:json][timeout:90];(way["building"](around:300,48.8049,2.2305,48.8361,2.3366);relation["building"](around:300,48.8049,2.2305,48.8361,2.3366););out geom;
-  ```
-  `around:300,lat1,lon1,lat2,lon2` builds a 300 m buffer around the polyline A→B (lat,lon order).
-  `out geom;` returns inline coordinates for each way (and relation members).
-- **Elevation profile — IGN Géoplateforme** (primary), GET:
-  `https://data.geopf.fr/altimetrie/1.0/calcul/alti/rest/elevationLine.json?lon=<l1>|<l2>|...&lat=<a1>|<a2>|...&resource=ign_rge_alti_wld&delimiter=|&indent=false&measures=false&zonly=false`
-  Returns `{"elevations":[{"lon","lat","z","acc"}, ...]}`. Tested: z=162.55 at site A, z=65.45 at
-  site B (matches the 162 m / ~67 m references). **200 points fit in a single request** (tested up
-  to 300 points → HTTP 200), so no chunking is needed at N=200; still implement a chunking helper
-  (≤200 pts/request, results concatenated in order) as a defensive measure. Handle `z == -99999`
-  (no-data) by linear interpolation from nearest valid neighbours. Fallback: Open-Elevation POST
-  `https://api.open-elevation.com/api/v1/lookup` with `{locations:[{latitude,longitude},...]}`.
-
-### Fixed scenario constants (do NOT recompute)
-- Site A (emitter): lat `48.8049`, lon `2.2305`, altitude **162 m absolute** (given constant).
-- Site B (receiver): lat `48.8361`, lon `2.3366`, ground ~67 m. Receiver altitude is a user input,
-  **default = IGN ground elevation at B + 15 m dome height** (compute default once data loaded,
-  before user edits).
-- Great-circle A→B ≈ 8.2 km. Sampling **N = 200** points.
-
-### Geometry/math choices (note in code comments)
-- Distance: haversine (R = 6 371 000 m). Azimuth: initial bearing formula.
-- Path interpolation: **linear in lon/lat** between A and B (acceptable over 8.2 km — comment this).
-- Beam altitude at fraction t∈[0,1]: `altA + t*(altB − altA)` (straight 3D segment).
-- Earth-curvature correction: optional, OFF by default. Provide a commented helper
-  `sagitta(d, L) = d*(L−d)/(2R)` (max ≈ 1.3 m over 8.2 km); document the choice in README.
-- Point-in-polygon: ray-casting, with per-building bounding-box pre-filter for performance
-  (~11 000 polygons × 200 samples).
-
-## File layout
-```
-/Users/gautric/Source/divers/laser/
-├── index.html
-├── css/style.css
-├── js/
-│   ├── config.js      constants: sites, altitudes, N, CDN-independent endpoints, colors
-│   ├── geo.js         haversine, bearing, interp, pointInPolygon, bbox helpers
-│   ├── data.js        Overpass fetch → GeoJSON + height parsing; IGN fetch + chunk + no-data
-│   ├── los.js         line-of-sight obstruction analysis
-│   ├── scene3d.js     MapLibre init, terrain, hillshade, fill-extrusion, deck.gl overlay/layers
-│   ├── chart2d.js     Chart.js cross-section
-│   └── app.js         state, UI wiring, orchestration, loading/errors
-├── README.md
-└── .agents/tasks/{plan.md, verification.md}
-```
-Load order in `index.html` (plain `<script>` tags, no modules/bundler, each file attaches to a
-global namespace object e.g. `window.LASER = {...}`, or use `type="module"` with ES imports —
-**choose ES modules** (`<script type="module">`) for clean imports; served over http so modules
-load fine). CDN libs loaded first as classic scripts (they set globals `maplibregl`, `deck`,
-`Chart`), then the app's module graph entry `js/app.js`.
+Tous les chemins ci-dessous sont **absolus ou relatifs à ce worktree** : un chemin
+relatif résolu depuis `/Users/gautric/Source/divers/laser` toucherait le dépôt
+parent, pas le worktree.
 
 ---
 
-# Implementation Plan (ordered)
+## 0. Contexte vérifié (lecture du code, pas supposition)
 
-- [ ] 1. Scaffold project: `index.html`, `css/style.css`, empty JS module files, and `js/config.js`.
-      `index.html` has the French header (titre + courte explication de l'expérience), a main area
-      `#map` (fills viewport), a results/controls side panel, and a collapsible 2D-profile panel
-      `#profil` containing a `<canvas id="chart">`. Add CDN `<script>`/`<link>` tags for MapLibre
-      (JS+CSS), deck.gl, Chart.js (exact pinned URLs from the Decisions section), then
-      `<script type="module" src="js/app.js">`. `config.js` exports all scenario constants, endpoint
-      URLs, sampling N=200, corridor radius 300, colors (building default/obstruct=red, beam, markers).
-      Files: `index.html`, `css/style.css`, `js/config.js`, `js/geo.js`, `js/data.js`, `js/los.js`,
-      `js/scene3d.js`, `js/chart2d.js`, `js/app.js`
-      Verify: `node --check js/config.js` passes; `python3 -m http.server 8000` then
-      `curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/index.html` → 200 and the three
-      CDN URLs each return 200 (see verification.md commands).
+- `index.html` charge **MapLibre GL JS 5.12.0** (`https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.js`),
+  deck.gl 9.4.0, Chart.js 4.4.4. Aucun bundler, aucun `package.json`, modules ES natifs.
+- Le cadran maison est `#heading-compass` (`index.html`, bloc commenté juste avant,
+  rose SVG `#hc-rose`, lecture numérique `#hc-value`), câblé par `wireHeadingCompass()`
+  dans `js/app.js` (~lignes 300-400) : `pointerdown` / `pointermove` / `pointerup`,
+  cumul d'écarts courts via `shortestAngleDelta`, `state.scene.setBearing()` immédiat,
+  `dblclick` = nord, `keydown` flèches gauche/droite (1°, **5° avec `ev.shiftKey`**),
+  `Home` = nord, et synchronisation retour via `state.scene.onBearingChange()`.
+- `js/scene3d.js` : classe `Scene3D`, carte créée avec `pitch: 62`, `maxPitch: 85`,
+  `minPitch: 0`, `dragRotate: true`, `pitchWithRotate: true`, `NavigationControl`
+  avec `visualizePitch: true`. Expose `getBearing()`, `setBearing()`,
+  `orientTo()` (easeTo animé), `onBearingChange()`. **Aucune API pitch pour l'instant.**
+- `js/scene3d.js` s'importe proprement sous Node (aucun accès DOM au niveau module,
+  seul `config.js` est importé) : c'est exploitable pour une vérification unitaire réelle.
+- `css/style.css` : bloc `.heading-compass` (+ `.is-dragging`, `.hc-*`) et `.nav-hint`.
+- Lancement local : `node server.js [port]` (serveur statique sans dépendance, dans
+  le worktree) ou `make serve` / `make start PORT=…` (passe par `npx http-server`,
+  donc réseau). **Pour la vérification, utiliser `node server.js`** : zéro dépendance,
+  zéro accès réseau.
 
-- [ ] 2. Implement `js/geo.js`: pure geometry helpers — `haversine(aLngLat,bLngLat)` (metres),
-      `bearing(a,b)` (deg 0–360), `interpolatePath(a,b,n)` → array of `{lon,lat,t,distM}` with t and
-      cumulative distance, `bboxOfRing(ring)`, `pointInPolygon([lon,lat], ring)` (ray casting),
-      `pointInBbox`. No external deps. Comment the linear-interp and haversine R choices.
-      Files: `js/geo.js`
-      Verify: `node --check js/geo.js`; quick node REPL/one-off asserting `haversine` A→B ≈ 8200 m
-      (±200) and `bearing` A→B ≈ 55–60° (record value in verification.md).
+---
 
-- [ ] 3. Implement `js/data.js` building pipeline: `fetchBuildings()` POSTs the EXACT validated
-      Overpass query (with `User-Agent` header; on failure retry once, then try the kumi mirror).
-      Convert each `way` with closed geometry into a GeoJSON Polygon Feature; for relations, use the
-      outer-member rings from `out geom` (skip ones that can't be assembled — comment the
-      simplification). `parseHeight(tags)`: parse `height`/`building:height` as metres (robust to
-      "12", "12 m", "12.5", comma decimals "12,5"); else `building:levels` × 3; else default 8 m;
-      store as `feature.properties.height` and a stable `id`. Return a FeatureCollection; cache in
-      memory. Include loading-state callbacks.
-      Files: `js/data.js`
-      Verify: `node --check js/data.js`; run the exact Overpass curl (verification.md) and confirm
-      non-empty JSON with building elements carrying height/levels tags; paste the way count.
+## 1. Décisions tranchées (à respecter, ne pas re-arbitrer)
 
-- [ ] 4. Implement `js/data.js` elevation pipeline: `fetchElevations(points)` builds the IGN
-      elevationLine GET URL (pipe-delimited lon/lat, `resource=ign_rge_alti_wld`, `zonly=false`),
-      chunking into ≤200-point requests and concatenating results in input order; map each returned
-      `{lon,lat,z}` back by index; replace `z == -99999` by linear interpolation from nearest valid
-      neighbours. On IGN failure, fall back to Open-Elevation POST. Return `z[]` aligned to the input
-      samples. Cache in memory.
-      Files: `js/data.js`
-      Verify: `node --check js/data.js`; run the exact IGN curl for a few sample points
-      (verification.md) and confirm an `elevations` array with realistic z (~30–170 m); paste first/last z.
+### D1 — Borne haute du pitch : **90°** (et non 85°)
 
-- [ ] 5. Implement `js/los.js`: `analyze({samples, groundZ, buildings, altA, altB})`. For each of the
-      N samples compute beam altitude by linear interpolation; find obstacle height = building height
-      of any footprint containing (or within bbox-prefiltered proximity of) the sample point (take the
-      max if several); obstacle top = `groundZ[i] + buildingHeight` (0 if no building);
-      `clearance[i] = beamAlt[i] − max(groundZ[i], obstacleTop[i])`. Return `{verdict, minClearance,
-      minIndex, obstructions:[{index, lon, lat, clearance}], obstructingBuildingIds:Set, series:{distKm,
-      beamAlt, groundZ, obstacleTop}}`. Verdict `CLEAR` if minClearance > 0 else `OBSTRUÉ`. Provide the
-      optional (default-off) curvature correction hook.
-      Files: `js/los.js`
-      Verify: `node --check js/los.js`; a node one-off feeding the real fetched Overpass + IGN data
-      through `analyze` prints a definite `CLEAR`/`OBSTRUÉ` verdict and minClearance — record both in
-      verification.md.
+Vérifié directement dans le bundle `maplibre-gl@5.12.0/dist/maplibre-gl.js` :
 
-- [ ] 6. Implement `js/scene3d.js` base map + 3D terrain: init MapLibre `Map` on `#map` with an
-      inline style (OSM raster source + layer with attribution), add the terrarium `raster-dem`
-      source (encoding `"terrarium"`, tileSize 256, maxzoom 15), `map.setTerrain({source, exaggeration})`,
-      add a `hillshade` layer, enable pitch/bearing (set initial pitch ~60°, bearing toward B, center
-      midpoint, zoom ~12). Expose `setExaggeration(v)`.
+- `setMaxPitch(e){ if((e = null == e ? 60 : e) > 180) throw new Error("maxPitch must be less than or equal to 180") … }`
+  → seule la valeur **au-delà de 180** est refusée ; le défaut est 60.
+- `setPitch(e){ const i = clamp(e, this.minPitch, this.maxPitch) / 180 * Math.PI … }`
+  → MapLibre **clampe** lui-même le pitch dans `[minPitch, maxPitch]`.
+- La doc `MapOptions` de MapLibre indique également une plage de pitch 0–180.
+  Le plafond historique de 85° (hérité de Mapbox GL) a été levé dans la v5
+  (demande amont « Increase max pitch for 3D scenarios »).
+
+**Conséquence** : on règle `maxPitch: 90` et on couvre réellement **0°–90°**, comme
+demandé. Aucune valeur n'est forcée ni refusée. Le commentaire actuel de
+`scene3d.js` qui affirme que 85 est « le maximum MapLibre » est **faux pour 5.12.0**
+et doit être corrigé dans le même geste.
+
+Réserve à documenter en commentaire : entre ~85° et 90° la caméra regarde quasiment
+l'horizon ; avec le terrain 3D activé, cette zone charge beaucoup de tuiles et le
+rendu peut devenir mou sur machine modeste. C'est une dégradation de confort, pas
+un refus de l'API — on garde 90.
+
+### D2 — Sens du geste vertical : **glisser vers le HAUT incline** (pitch croissant)
+
+Le brief demandait « cohérent avec `visualizePitch` natif » **et** « glisser vers le
+bas incline ». Ces deux exigences sont contradictoires : dans le bundle 5.12.0, le
+gestionnaire souris natif est
+
+```
+pitchDegreesPerPixelMoved: -0.5        // facteur par défaut
+move: (prev, cur) => ({ pitchDelta: (cur.y - prev.y) * facteur })
+```
+
+donc `pitchDelta = (y_courant - y_précédent) × (-0.5)` : descendre le pointeur
+**diminue** le pitch (vue de dessus), le remonter **augmente** le pitch (vue rasante).
+Le geste tactile (`touchPitch`) utilise le même signe.
+
+**Choix retenu** : la cohérence avec le natif, qui est le critère explicite du brief
+et ce que l'utilisateur ressent déjà via ctrl/clic-droit-glisser sur la carte et via
+la boussole du `NavigationControl`. On reprend **le même facteur `-0.5 °/pixel`**.
+La parenthèse « glisser vers le bas incline » du brief reposait sur une hypothèse
+inversée du comportement natif ; si l'utilisateur préfère malgré tout cette
+convention, c'est **un seul changement de signe** sur la constante
+`PITCH_DEG_PER_PIXEL` (à noter dans le rapport final).
+
+### D3 — Maj appuyée/relâchée pendant le glissement : **mode figé au `pointerdown`**
+
+On lit `ev.shiftKey` **une seule fois**, au `pointerdown`, et on stocke le mode
+(`"pitch"` ou `"bearing"`) pour toute la durée du glissement. Appuyer ou relâcher
+Maj en cours de glissement ne change rien. C'est le comportement le moins
+surprenant (pas de bascule brutale cap↔inclinaison au milieu d'un geste) et le plus
+simple à raisonner ; à documenter en commentaire français et dans le README.
+
+### D4 — Maj au clavier : **inchangé**, pas de conflit
+
+`ev.shiftKey` reste le modificateur de **pas** du pilotage clavier (1° → 5°), pour
+les flèches gauche/droite (cap) **comme** pour les nouvelles flèches haut/bas
+(pitch). Les deux chemins sont distincts (`keydown` vs `pointerdown`), aucun
+conflit. `ArrowUp` / `ArrowDown` sont libres dans le `keydown` actuel du cadran
+(seuls `ArrowLeft`, `ArrowRight`, `Home` sont traités) et le cadran fait déjà
+`stopPropagation` sur `keydown`, donc le gestionnaire clavier MapLibre n'est pas
+sollicité.
+
+### D5 — Retour visuel : lecture numérique + état de glissement, **pas** de bascule 3D du cadran
+
+On n'ajoute **aucun widget**. Deux évolutions minimes :
+
+1. une seconde ligne de lecture sous le cap (`#hc-pitch`, ex. `incl. 62°`), dans le
+   style existant de `.hc-value` ;
+2. une classe d'état `.is-pitching` sur le cadran pendant un glissement en mode
+   pitch (curseur `ns-resize`, bordure accentuée), en miroir de `.is-dragging`.
+
+On **écarte** explicitement l'imitation du `rotateX(pitch)` de MapLibre sur le
+cadran : à 85–90° le disque s'aplatit en une ligne et devient inattrapable à la
+souris, alors que notre cadran *est* la cible du geste. À documenter en commentaire.
+
+### D6 — Accessibilité
+
+`#heading-compass` garde `role="slider"` + `aria-valuenow`/`aria-valuetext` pour le
+**cap** : un `slider` ARIA ne porte qu'une valeur, et le cap reste la fonction
+principale du cadran. L'inclinaison est exposée autrement :
+
+- `aria-describedby="nav-hint"` sur le cadran, en pointant l'aide-mémoire visible
+  `#nav-hint` (texte réel, déjà dans le DOM) complété avec « Maj + glisser =
+  inclinaison » ;
+- `title` du cadran complété de la même information ;
+- lecture visible `#hc-pitch` ;
+- alternative clavier complète (flèches haut/bas).
+
+Pas de zone `aria-live` : elle serait saturée d'annonces pendant le glissement.
+
+---
+
+## 2. Étapes
+
+- [ ] 1. **API pitch dans `Scene3D`.** Ajouter les constantes exportées
+      `PITCH_MIN = 0` / `PITCH_MAX = 90`, la fonction exportée
+      `clampPitch(p)` (clamp dans `[PITCH_MIN, PITCH_MAX]`, **sans** wrap-around,
+      renvoie `PITCH_MIN` si l'entrée n'est pas finie — à distinguer nettement de
+      `normalizeBearing`, qui lui enroule), et dans la classe : `getPitch()`,
+      `setPitch(pitch)` (immédiat, `this.map.setPitch(clampPitch(pitch))`, ne touche
+      QUE le pitch — cap, centre et zoom préservés) et `onPitchChange(cb)` (abonné
+      aux événements `"pitch"` et `"move"`, appelle `cb` une première fois
+      immédiatement, en miroir exact de `onBearingChange`). Passer
+      `maxPitch: PITCH_MAX` dans les options de la carte et **corriger le
+      commentaire** qui prétend que 85 est le maximum MapLibre (décision D1 :
+      référence au clamp `[minPitch, maxPitch]` et à la limite réelle de 180 dans la
+      5.12.0, plus la réserve sur la zone 85–90° rasante avec terrain). Style et
+      verbosité des commentaires français identiques à `setBearing`/`onBearingChange`.
       Files: `js/scene3d.js`
-      Verify: `node --check js/scene3d.js`; load page in browser via the static server and confirm the
-      map renders with terrain relief (manual visual note in verification.md); no console errors.
+      Verify: `node --check js/scene3d.js` (code de sortie 0) **et** la vérification
+      unitaire réelle du clamp :
+      ```bash
+      cd /Users/gautric/Source/divers/laser/.worktrees/pitch-souris-shift
+      node --input-type=module -e "
+      import assert from 'node:assert/strict';
+      const m = await import('./js/scene3d.js');
+      assert.equal(m.PITCH_MIN, 0);
+      assert.equal(m.PITCH_MAX, 90);
+      assert.equal(m.clampPitch(-10), 0);
+      assert.equal(m.clampPitch(0), 0);
+      assert.equal(m.clampPitch(62), 62);
+      assert.equal(m.clampPitch(90), 90);
+      assert.equal(m.clampPitch(120), 90);
+      assert.equal(m.clampPitch(NaN), 0);
+      assert.equal(m.normalizeBearing(-10), 350);
+      console.log('OK clampPitch + bornes');
+      "
+      ```
+      Attendu : `OK clampPitch + bornes`, sortie 0. (Harnais déjà validé contre
+      `normalizeBearing` sur l'arbre actuel : `scene3d.js` s'importe sous Node.)
 
-- [ ] 7. Implement `js/scene3d.js` 3D buildings: add the buildings GeoJSON as a source and a
-      `fill-extrusion` layer with `fill-extrusion-base: 0`, `fill-extrusion-height: ["get","height"]`,
-      and a data-driven `fill-extrusion-color` using `["case", ["get","obstructs"], <red>, <default>]`.
-      Provide `setBuildings(fc)` and `markObstructing(idSet)` (sets `obstructs` on matching features and
-      calls `setData`). Add buildings/terrain layer toggle hooks.
-      Files: `js/scene3d.js`
-      Verify: `node --check js/scene3d.js`; browser load shows extruded buildings; toggling building
-      visibility works (manual note).
+- [ ] 2. **Coque visuelle : lecture d'inclinaison + état de glissement.** Dans
+      `index.html`, ajouter `<span id="hc-pitch" class="hc-pitch">62°</span>` juste
+      après `#hc-value` dans `#heading-compass` ; compléter l'attribut `title` du
+      cadran (« Glisser : cap 360° · Maj + glisser : inclinaison 0-90° ·
+      double-clic : nord ») ; ajouter `aria-describedby="nav-hint"` sur le cadran ;
+      compléter le texte de `#nav-hint` avec « · Maj + glisser le cadran :
+      inclinaison » ; compléter le commentaire de bloc au-dessus du cadran pour
+      décrire le geste Maj + glisser, le mode figé au `pointerdown` (D3) et la plage
+      0-90°. Dans `css/style.css`, ajouter `.hc-pitch` (calqué sur `.hc-value`,
+      teinte `var(--muted)`, taille 10,5-11 px, `font-variant-numeric: tabular-nums`)
+      et `.heading-compass.is-pitching { cursor: ns-resize; border-color: var(--accent); }`
+      à côté de `.is-dragging`. Ne pas toucher à la géométrie SVG du cadran.
+      Files: `index.html`, `css/style.css`
+      Verify: `node server.js 8099 &` puis
+      `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8099/` → `200`, et
+      `curl -s http://localhost:8099/ | grep -c 'id="hc-pitch"'` → `1` ; ouvrir
+      `http://localhost:8099` : le cadran affiche désormais deux lignes de lecture,
+      la mise en page du coin haut-gauche n'a pas bougé, aucune erreur dans la
+      console. Arrêter le serveur (`kill %1`).
 
-- [ ] 8. Implement `js/scene3d.js` deck.gl beam + markers (THE HARD PART): create
-      `new deck.MapLibreOverlay({ interleaved: true, layers: [...] })` and `map.addControl(overlay)`.
-      Beam = `deck.LineLayer` (or `PathLayer`) whose coordinates carry z (altitude in metres):
-      `getSourcePosition: [lonA, latA, 162]`, `getTargetPosition: [lonB, latB, receiverAlt]`,
-      `getWidth`, `getColor`, and `parameters: { depthTest: true }` so terrain and the fill-extrusion
-      buildings occlude it (interleaved mode shares the depth buffer). Site markers = `deck.ColumnLayer`
-      (or ScatterplotLayer) at each site's true altitude; obstruction hit points = a distinct red marker
-      layer at `[lon,lat,obstacleTop]`. Expose `setBeam(altA,altB)`, `setObstructions(points)`,
-      `setBeamVisible(bool)`. Comment clearly that z is absolute metres and that interleaved+depthTest is
-      what makes an obstruction visibly block the beam (not a draped line).
-      Files: `js/scene3d.js`
-      Verify: `node --check js/scene3d.js`; cite the exact lines where the LineLayer is constructed with
-      z-bearing coordinates and `interleaved:true`; browser: orbit the scene and confirm the beam floats
-      at altitude and is cut/occluded where a tall building intersects it (manual note).
+- [ ] 3. **Geste Maj + glisser et pilotage clavier du pitch** (dépend de 1 pour
+      l'API `Scene3D` et de 2 pour l'élément `#hc-pitch`). Dans `js/app.js` :
+      importer `clampPitch`, `PITCH_MIN`, `PITCH_MAX` depuis `./scene3d.js` ;
+      dans `wireHeadingCompass()` :
+      - ajouter la constante `PITCH_DEG_PER_PIXEL = -0.5` (D2) avec le commentaire
+        qui explique qu'elle reprend le `pitchDegreesPerPixelMoved` natif de
+        MapLibre, donc que monter le pointeur incline vers l'horizon ;
+      - récupérer `const pitchValue = $("hc-pitch")` ;
+      - remplacer le booléen `isDragging` par un mode de glissement figé
+        (`dragMode` ∈ `null | "bearing" | "pitch"`, lu depuis `ev.shiftKey` au
+        `pointerdown` uniquement — D3) ; `isDragging` devient `dragMode !== null`.
+        **Ne pas modifier la mécanique cap existante** : `dragBearing`,
+        `lastPointerAngle`, `shortestAngleDelta`, `apply()` restent tels quels et ne
+        sont utilisés qu'en mode `"bearing"` ;
+      - en mode `"pitch"` : mémoriser `lastPointerY = ev.clientY` et
+        `dragPitch = state.scene.getPitch()` au `pointerdown`, puis à chaque
+        `pointermove` faire `dragPitch = clampPitch(dragPitch + (ev.clientY - lastPointerY) * PITCH_DEG_PER_PIXEL)`,
+        mettre à jour `lastPointerY`, appeler `applyPitch(dragPitch)`.
+        **Clamper l'accumulateur lui-même** (pas seulement la valeur envoyée) pour
+        que le geste reparte immédiatement dès que le pointeur change de sens ;
+      - ajouter `applyPitch(p)` (miroir de `apply`) : `state.scene.setPitch(p)` puis
+        `renderPitch(p)` ; et `renderPitch(p)` qui écrit `incl. {Math.round(p)}°`
+        dans `#hc-pitch` ;
+      - poser/retirer la classe `is-pitching` (mode pitch) ou `is-dragging` (mode
+        cap) au `pointerdown` / dans `endDrag` ;
+      - clavier : dans le `keydown` existant, ajouter `ArrowUp` →
+        `applyPitch(state.scene.getPitch() + step)` et `ArrowDown` →
+        `applyPitch(state.scene.getPitch() - step)`, en réutilisant **le même**
+        `step = ev.shiftKey ? 5 : 1` (D4) — ne pas toucher aux branches
+        `ArrowLeft`/`ArrowRight`/`Home` ;
+      - synchronisation retour : `state.scene.onPitchChange((p) => { if (dragMode === "pitch") return; renderPitch(p); })`,
+        pour que ctrl/clic-droit-glisser et la boussole MapLibre rafraîchissent la
+        lecture. Garder la garde `isDragging` existante sur `onBearingChange`.
+      Files: `js/app.js`
+      Verify: `node --check js/app.js` → sortie 0 ; puis `node server.js 8099 &`,
+      ouvrir `http://localhost:8099`, console sans erreur, et dérouler la
+      checklist manuelle de l'étape 5.
 
-- [ ] 9. Implement `js/chart2d.js`: Chart.js line chart on `#chart` — X = distance (km), Y = altitude
-      (m); datasets: terrain ground line, building obstacle tops (filled area), straight beam line; mark
-      the min-clearance / obstruction zone. French axis labels "Distance (km)" / "Altitude (m)".
-      `renderProfile(series, los)` and `destroy()` for re-render.
-      Files: `js/chart2d.js`
-      Verify: `node --check js/chart2d.js`; browser shows the 2D profile with the three curves and
-      French labels (manual note).
-
-- [ ] 10. Implement `js/app.js` orchestration + UI: on load, init scene (step 6); build the N=200
-      samples; fetch buildings and elevations in parallel with loading indicators and clear error
-      messages if a service is down; compute default receiver altitude (groundB + 15); add buildings and
-      beam to the scene; run `los.analyze`; mark obstructing buildings red + obstruction markers; render
-      the 2D profile; populate the results panel (distance, azimut A→B, altitude émetteur 162 m,
-      altitude récepteur éditable, dégagement minimal, verdict CLEAR/OBSTRUÉ couleur-codé, nombre de
-      bâtiments). Wire controls: receiver-altitude input, terrain-exaggeration slider, "Recalculer /
-      Actualiser" button (recomputes LOS + beam + chart from cached data without refetching),
-      toggles bâtiments/terrain/faisceau/profil. Keep all fetched data cached in memory.
-      Files: `js/app.js`, `index.html` (panel markup), `css/style.css`
-      Verify: `node --check js/app.js`; browser end-to-end: panels populate, verdict shows, editing
-      receiver altitude + "Recalculer" updates beam/chart/verdict without new network calls (manual note).
-
-- [ ] 11. Write `README.md` (French): l'expérience (laser Meudon → Paris Arago), sources de données
-      (OSM/Overpass bâtiments, IGN RGE ALTI profil d'élévation, AWS terrarium DEM terrain 3D), comment
-      lancer (`python3 -m http.server 8000` puis http://localhost:8000), et toutes les hypothèses
-      (altitude d'émission 162 m, altitude récepteur par défaut, heuristiques de hauteur de bâtiment,
-      traitement de la courbure terrestre, pourquoi MapLibre+deck.gl et aucun token requis).
+- [ ] 4. **Documentation.** Dans `README.md`, section « ### Utilisation », ajouter
+      les puces de navigation : « **Cadran de boussole** (haut à gauche) : glisser =
+      cap sur 360° ; **Maj + glisser = inclinaison (pitch), 0° à 90°** ; flèches
+      gauche/droite = cap ±1° (±5° avec Maj), flèches haut/bas = inclinaison ±1°
+      (±5° avec Maj), Début = nord ; double-clic = nord ». Préciser le mode figé au
+      début du glissement (D3). Ajouter, dans « ## Hypothèses et choix
+      (documentés) », une puce sur la borne de pitch : plage **0-90°** réellement
+      permise par MapLibre GL JS 5.12.0 (`maxPitch` n'est refusé qu'au-delà de 180,
+      le plafond historique de 85° étant levé en v5), et sur le sens du geste
+      (identique au `pitchDegreesPerPixelMoved: -0.5` natif : monter le pointeur
+      incline vers l'horizon).
       Files: `README.md`
-      Verify: README renders; links/commands match the implementation.
+      Verify: relire le rendu Markdown (`grep -n "inclinaison" README.md` doit
+      montrer les deux emplacements) — la vérification fonctionnelle est celle de
+      l'étape 5.
 
-- [ ] 12. Full verification pass → write `/Users/gautric/Source/divers/laser/.agents/tasks/verification.md`
-      executing every check in the "Verification the coder must perform" section below; then
-      `git init` and a single commit of the whole project (do NOT push). Clean up any temp files.
-      Files: `.agents/tasks/verification.md`
-      Verify: verification.md contains all required evidence; `git log --oneline` shows one commit.
+- [ ] 5. **Vérification d'intégration (obligatoire, manuelle au navigateur).**
+      Aucune suite de tests automatisés n'existe dans ce dépôt (pas de
+      `package.json`, pas de runner, pas de navigateur headless, et le brief
+      interdit d'ajouter une dépendance) : la vérification fonctionnelle est donc
+      manuelle et doit être consignée dans le rapport.
+      Files: aucun (vérification)
+      Verify:
+      ```bash
+      cd /Users/gautric/Source/divers/laser/.worktrees/pitch-souris-shift
+      node --check js/scene3d.js && node --check js/app.js
+      node server.js 8000
+      # puis ouvrir http://localhost:8000 (Ctrl+C pour arrêter)
+      ```
+      Checklist à valider point par point :
+      1. Chargement sans erreur dans la console ; le cadran affiche `0° N` (ou le
+         cap initial 55°) **et** `incl. 62°` (pitch initial inchangé).
+      2. Glisser le cadran **sans** Maj : le cap tourne comme avant, sur 360°, sans
+         discontinuité au passage 0°/360° ; **la lecture `incl.` ne bouge pas**.
+      3. **Maj + glisser** vers le haut : l'inclinaison augmente et suit le pointeur
+         sans latence ; le cap affiché **ne bouge pas** ; la bordure du cadran passe
+         en état `is-pitching` et le curseur devient `ns-resize`.
+      4. Maj + glisser vers le bas : l'inclinaison diminue jusqu'à `incl. 0°` (vue de
+         dessus) puis **s'arrête** ; continuer à descendre ne fait rien, et remonter
+         le pointeur repart immédiatement de 0° (preuve que l'accumulateur est bien
+         clampé). Symétriquement vers le haut : arrêt net à `incl. 90°`, aucun
+         wrap-around vers 0°.
+      5. Relâcher / appuyer Maj **pendant** un glissement : le mode ne change pas
+         (D3).
+      6. Clavier sur le cadran (Tab pour le focus) : flèches haut/bas = ±1°,
+         Maj+flèches haut/bas = ±5°, bornées à 0 et 90 ; flèches gauche/droite et
+         Maj+flèches gauche/droite pilotent toujours le cap comme avant ; `Début`
+         ramène au nord.
+      7. Ctrl-glisser (ou clic-droit-glisser) sur la carte, et glisser la boussole du
+         `NavigationControl` : la lecture `incl.` du cadran suit (synchronisation
+         retour), et l'inclinaison monte bien jusqu'à 90°.
+      8. Le faisceau, les bâtiments, le terrain et le verdict sont inchangés ; le
+         profil 2D et les curseurs du panneau fonctionnent toujours.
 
 ---
 
-# Verification the coder must perform (record all evidence in `.agents/tasks/verification.md`)
+## 3. Points d'attention pour l'implémenteur
 
-1. **JS syntax**: `node --check` on every file in `js/` → report pass/fail for each.
-2. **Static serve**: `python3 -m http.server 8000` (background); `curl` index.html + each JS/CSS asset →
-   confirm HTTP 200. Confirm the three CDN URLs return 200.
-3. **Overpass (exact query)**:
-   ```
-   curl -s -X POST "https://overpass-api.de/api/interpreter" -H "User-Agent: laser-los-experiment/1.0" \
-     --data-urlencode 'data=[out:json][timeout:90];(way["building"](around:300,48.8049,2.2305,48.8361,2.3366);relation["building"](around:300,48.8049,2.2305,48.8361,2.3366););out geom;'
-   ```
-   → non-empty JSON with building elements carrying height/levels tags; paste the element/way count.
-4. **IGN (exact URL)**:
-   ```
-   curl -s "https://data.geopf.fr/altimetrie/1.0/calcul/alti/rest/elevationLine.json?lon=2.2305|2.3366&lat=48.8049|48.8361&resource=ign_rge_alti_wld&delimiter=|&indent=false&measures=false&zonly=false"
-   ```
-   → `elevations` array with realistic z (~30–170 m); paste the z values.
-5. **Terrarium DEM**: `curl -s -o /tmp/t.png -w "%{http_code} %{content_type}" "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/12/2074/1409.png"`
-   → HTTP 200, image/png; `file /tmp/t.png` confirms PNG.
-6. **LOS on real data**: run the computation against the real fetched Overpass + IGN data; state the
-   verdict (CLEAR / OBSTRUÉ) and the minimum clearance in metres, plus obstruction location(s) if any.
-7. **3D render assertions** (headless WebGL verify is out of scope): assert no JS syntax/load errors;
-   cite the code lines where the deck.gl beam layer is built with z-bearing coordinates and
-   `interleaved:true`/`depthTest:true`; confirm MapLibre `setTerrain` and the `fill-extrusion` layer are
-   added; describe how a user visually confirms in-browser that the 3D beam clears or is blocked (orbit,
-   look along the beam, red obstructing buildings + red hit markers).
-8. Clean up temp files (`/tmp/*.png`, `/tmp/ov.json`, etc.).
+- **Ne pas régresser le cap.** Le cumul d'angle (`shortestAngleDelta`,
+  `dragBearing` non borné) est ce qui rend la rotation continue : il ne doit pas
+  être touché, et il ne faut surtout pas lui appliquer un clamp. Le pitch, à
+  l'inverse, est **clampé** et **jamais** enroulé.
+- **Deux accumulateurs distincts.** `dragBearing` (angulaire, non borné) et
+  `dragPitch` (linéaire, clampé) ne partagent rien.
+- `setPitch` de MapLibre clampe déjà dans `[minPitch, maxPitch]` ; notre
+  `clampPitch` reste nécessaire pour que **l'accumulateur** et la **lecture
+  affichée** restent cohérents avec la borne, et pour que le geste réponde
+  instantanément au changement de sens.
+- `state.scene` peut être `null` avant `boot()` : `wireHeadingCompass()` est appelé
+  après `await state.scene.init()`, donc c'est déjà garanti ; conserver la garde
+  `if (!dial || !rose || !state.scene) return`.
+- Commentaires et textes d'interface **en français**, style verbeux et explicatif de
+  `scene3d.js`. Aucune dépendance ajoutée, aucun build, pas de TypeScript, modules
+  ES natifs.
+- Commits locaux sur la branche `pitch-souris-shift` ; ne pas pousser.
 
-## Open assumptions (reasonable, documented — not blockers)
-- Corridor fixed at 300 m (as briefed); ~11 000 buildings / ~10.7 MB single cached fetch is acceptable.
-  If browser performance suffers, the coder may narrow the corridor and must note it in README.
-- Relations handled as outer rings only; un-assemblable multipolygons skipped.
-- Building heights relative to IGN ground at the sample (approximation; the exact numeric verdict comes
-  from the LOS analysis, the 3D view is the visualisation).
-- Earth curvature correction implemented but OFF by default (≤1.3 m over 8.2 km).
+## 4. Note sur `.agents/tasks/review.json`
+
+Le fichier `.agents/tasks/review.json` présent au départ dans ce worktree portait
+`"verdict": "APPROVED"` **pour la tâche précédente** (analyse de ligne de visée),
+ce qui aurait satisfait immédiatement la condition d'arrêt de la boucle de revue.
+Il a été réinitialisé à `"verdict": "CHANGES_REQUESTED"` avec une note explicite,
+pour que la boucle de cette tâche parte d'un état neutre. Le relecteur doit le
+réécrire en dernier, à chaque itération.

@@ -83,6 +83,17 @@ par défaut est calculée, puis la ligne de visée est analysée et affichée.
   faisceau + profil + verdict **sans nouvel appel réseau**, données en cache).
 - **Exagération du terrain** : curseur (1×–5×).
 - **Affichage** : cases à cocher Bâtiments / Terrain 3D / Faisceau / Profil 2D.
+- **Cadran de boussole** (haut à gauche) :
+  - **glisser** = cap sur 360°, en continu, sans butée ;
+  - **Maj + glisser = inclinaison (pitch), de 0° à 90°** — monter le pointeur
+    incline vers l'horizon, le descendre revient à la vue de dessus ; la valeur
+    est bornée aux deux extrémités (pas d'enroulement) ;
+  - le mode est **figé au début du glissement** : la touche Maj n'est lue qu'au
+    moment où l'on appuie, l'appuyer ou la relâcher ensuite ne fait pas basculer
+    le geste de cap à inclinaison (ou l'inverse) en pleine course ;
+  - **clavier** (cadran au focus) : flèches gauche/droite = cap ±1° (±5° avec
+    Maj), flèches haut/bas = inclinaison ±1° (±5° avec Maj), **Début** = nord ;
+  - **double-clic** = retour au nord.
 - Orbiter avec le clic droit pour percevoir les altitudes et voir le faisceau
   masqué par les obstacles.
 
@@ -105,6 +116,20 @@ par défaut est calculée, puis la ligne de visée est analysée et affichée.
 - **Volume réseau** : une seule requête Overpass (corridor 300 m, ~11 000
   bâtiments, ~10,7 Mo) et un appel IGN (200 points) — tout est mis en cache en
   mémoire ; le bouton « Recalculer » n'émet aucun nouvel appel.
+- **Borne d'inclinaison 0°–90°** : plage réellement permise par MapLibre GL JS
+  5.12.0, vérifiée dans le bundle — `setMaxPitch` ne refuse qu'une valeur
+  **supérieure à 180** (« maxPitch must be less than or equal to 180 ») ou
+  inférieure à `minPitch` ; le plafond historique de 85° hérité de Mapbox GL a
+  été levé en v5. Aucune valeur refusée par l'API n'est forcée, donc aucun repli
+  à 85°. Entre ~85° et 90° la caméra rase l'horizon et charge beaucoup de tuiles
+  de terrain : le rendu peut devenir mou sur machine modeste (confort, pas
+  erreur).
+- **Sens du geste d'inclinaison** : identique au gestionnaire natif de MapLibre
+  (`pitchDegreesPerPixelMoved = -0,5 °/pixel` appliqué à l'écart vertical), donc
+  cohérent avec ctrl/clic-droit-glisser sur la carte et avec la boussole du
+  `NavigationControl` en `visualizePitch`. Monter le pointeur incline vers
+  l'horizon. Inverser cette convention ne demanderait qu'un changement de signe
+  sur `PITCH_DEG_PER_PIXEL` dans `js/app.js`.
 
 ## Structure du projet
 

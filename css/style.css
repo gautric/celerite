@@ -255,6 +255,12 @@ body {
   cursor: grabbing;
   border-color: var(--accent);
 }
+/* Glissement en mode inclinaison (Maj + glisser) : le geste est vertical, le
+   curseur le signale. Même accentuation de bordure que le mode cap. */
+.heading-compass.is-pitching {
+  cursor: ns-resize;
+  border-color: var(--accent);
+}
 .heading-compass:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -307,11 +313,24 @@ body {
   font-variant-numeric: tabular-nums;
   color: var(--text);
 }
+/* Lecture de l'inclinaison (pitch), calquée sur .hc-value mais en teinte
+   secondaire : le cap reste l'information principale du cadran. */
+.hc-pitch {
+  display: block;
+  margin-top: 1px;
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted, #9fb0c3);
+}
 
-/* Aide-mémoire discret des interactions de navigation, sous la boussole. */
+/* Aide-mémoire discret des interactions de navigation, sous la boussole.
+   Le décalage vertical tient compte des DEUX lignes de lecture du cadran
+   (cap + inclinaison) : il a été descendu de 124 à 138 px à l'ajout de
+   #hc-pitch pour ne pas chevaucher le cadran. */
 .nav-hint {
   position: absolute;
-  top: 124px;
+  top: 138px;
   left: 10px;
   z-index: 2;
   max-width: 190px;

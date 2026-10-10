@@ -15,7 +15,13 @@ import {
 import { haversine, bearing, interpolatePath } from "./geo.js";
 import { fetchBuildings, fetchElevations } from "./data.js";
 import { analyze } from "./los.js";
-import { Scene3D, normalizeBearing } from "./scene3d.js";
+import {
+  Scene3D,
+  normalizeBearing,
+  clampPitch,
+  PITCH_MIN,
+  PITCH_MAX,
+} from "./scene3d.js";
 import { renderProfile } from "./chart2d.js";
 
 // --- État applicatif (cache mémoire) ---
@@ -268,16 +274,41 @@ function wireHeadingCompass() {
   const dial = $("heading-compass");
   const rose = $("hc-rose");
   const value = $("hc-value");
+  const pitchValue = $("hc-pitch");
   if (!dial || !rose || !state.scene) return;
 
+  /**
+   * Degrés d'inclinaison par pixel de déplacement vertical du pointeur.
+   * Valeur et SIGNE repris tels quels du gestionnaire natif de MapLibre
+   * (pitchDegreesPerPixelMoved = -0.5, appliqué à (y_courant - y_précédent)) :
+   * le geste du cadran est donc identique à ctrl/clic-droit-glisser sur la
+   * carte et au glisser sur la boussole du NavigationControl (visualizePitch).
+   * Conséquence concrète : MONTER le pointeur fait croître l'inclinaison (vue
+   * rasante vers l'horizon), le DESCENDRE la ramène vers 0° (vue de dessus).
+   */
+  const PITCH_DEG_PER_PIXEL = -0.5;
+
+  // Mode de glissement, FIGÉ au pointerdown pour toute la durée du geste :
+  //   null       -> aucun glissement en cours ;
+  //   "bearing"  -> glisser sans Maj, on pilote le cap (comportement d'origine) ;
+  //   "pitch"    -> glisser avec Maj, on pilote l'inclinaison.
+  // On lit ev.shiftKey UNE SEULE FOIS, au pointerdown : appuyer ou relâcher Maj
+  // pendant le glissement ne bascule donc pas d'un axe à l'autre au milieu du
+  // geste (bascule cap <-> inclinaison en pleine course = très surprenant).
+  let dragMode = null;
   // Garde anti-boucle : pendant le glissement, c'est le cadran qui pilote la
   // carte ; on ignore donc les événements "rotate"/"move" qu'il provoque, pour
   // ne pas réécrire la rotation en cours depuis la carte.
-  let isDragging = false;
+  const isDragging = () => dragMode !== null;
   // Angle pointeur du dernier événement et cap accumulé (NON borné : il peut
   // dépasser 360° ou passer sous 0°, on ne normalise qu'à l'affichage/au réglage).
   let lastPointerAngle = 0;
   let dragBearing = 0;
+  // Accumulateur du mode inclinaison : ordonnée du dernier événement pointeur et
+  // inclinaison cumulée. Rien de commun avec le cap : dragBearing est angulaire
+  // et non borné (il s'enroule), dragPitch est linéaire et BORNÉ à chaque pas.
+  let lastPointerY = 0;
+  let dragPitch = 0;
 
   /**
    * Angle du pointeur autour du centre du cadran, en degrés, 0 = haut et
@@ -309,6 +340,30 @@ function wireHeadingCompass() {
     render(b);
   }
 
+  /** Rafraîchit la lecture numérique de l'inclinaison sous le cap. */
+  function renderPitch(pitch) {
+    if (!pitchValue) return;
+    pitchValue.textContent = `incl. ${Math.round(clampPitch(pitch))}°`;
+  }
+
+  /**
+   * Applique une inclinaison à la caméra sans animation, puis rafraîchit la
+   * lecture. Miroir de apply() pour l'axe vertical : setPitch ne touche QUE
+   * l'inclinaison (cap, centre et zoom préservés) et borne la valeur dans
+   * [PITCH_MIN, PITCH_MAX] — aucun enroulement.
+   */
+  function applyPitch(pitch) {
+    const p = clampPitch(pitch);
+    state.scene.setPitch(p);
+    renderPitch(p);
+  }
+
+  // Infobulle de la lecture d'inclinaison : rappelle les bornes réelles de
+  // l'axe, en les lisant sur les constantes de scene3d.js (source unique).
+  if (pitchValue) {
+    pitchValue.title = `Inclinaison de la caméra : ${PITCH_MIN}° (vue de dessus) à ${PITCH_MAX}° (horizon)`;
+  }
+
   // Le widget est un enfant du conteneur de la carte : on empêche les
   // événements souris/tactile/molette de remonter aux gestionnaires MapLibre,
   // sinon glisser le cadran déplacerait aussi la carte (et le double-clic
@@ -323,36 +378,60 @@ function wireHeadingCompass() {
     dial.addEventListener(type, (ev) => ev.stopPropagation());
   }
 
-  // Glissement continu : atan2 pour l'angle pointeur, cumul des écarts courts
-  // pour franchir 0°/360° sans discontinuité, setBearing immédiat pour suivre
-  // le pointeur sans latence (pitch / centre / zoom préservés).
+  // Glissement continu. Deux gestes sur la même cible, départagés par Maj au
+  // moment du pointerdown (et seulement à ce moment-là, cf. dragMode) :
+  //  - SANS Maj : cap. atan2 pour l'angle pointeur, cumul des écarts courts
+  //    pour franchir 0°/360° sans discontinuité, setBearing immédiat pour
+  //    suivre le pointeur sans latence (pitch / centre / zoom préservés) ;
+  //  - AVEC Maj : inclinaison. Déplacement vertical en pixels × -0,5 °/px
+  //    (convention native MapLibre), setPitch immédiat (cap / centre / zoom
+  //    préservés).
   dial.addEventListener("pointerdown", (ev) => {
     ev.stopPropagation();
     ev.preventDefault();
-    isDragging = true;
-    dragBearing = state.scene.getBearing();
-    lastPointerAngle = pointerAngle(ev);
-    dial.classList.add("is-dragging");
+    // Lecture UNIQUE de Maj : le mode est figé jusqu'au relâchement.
+    dragMode = ev.shiftKey ? "pitch" : "bearing";
+    if (dragMode === "pitch") {
+      dragPitch = state.scene.getPitch();
+      lastPointerY = ev.clientY;
+      dial.classList.add("is-pitching");
+    } else {
+      dragBearing = state.scene.getBearing();
+      lastPointerAngle = pointerAngle(ev);
+      dial.classList.add("is-dragging");
+    }
     dial.setPointerCapture(ev.pointerId);
     dial.focus();
   });
 
   dial.addEventListener("pointermove", (ev) => {
-    if (!isDragging) return;
-    const a = pointerAngle(ev);
-    const delta = shortestAngleDelta(a - lastPointerAngle);
-    lastPointerAngle = a;
-    // La rose suit le pointeur ("on attrape le cadran et on le tourne") : la
-    // rose tournant de -cap, faire avancer la rose de delta revient à retirer
-    // delta au cap. Le cumul n'est jamais borné ni accroché aux cardinaux.
-    dragBearing -= delta;
-    apply(dragBearing);
+    if (dragMode === "bearing") {
+      const a = pointerAngle(ev);
+      const delta = shortestAngleDelta(a - lastPointerAngle);
+      lastPointerAngle = a;
+      // La rose suit le pointeur ("on attrape le cadran et on le tourne") : la
+      // rose tournant de -cap, faire avancer la rose de delta revient à retirer
+      // delta au cap. Le cumul n'est jamais borné ni accroché aux cardinaux.
+      dragBearing -= delta;
+      apply(dragBearing);
+    } else if (dragMode === "pitch") {
+      const dy = ev.clientY - lastPointerY;
+      lastPointerY = ev.clientY;
+      // On borne L'ACCUMULATEUR lui-même, pas seulement la valeur envoyée à la
+      // caméra : sans cela, continuer à pousser contre une butée gonflerait une
+      // réserve invisible (p. ex. -40°) qu'il faudrait « rembourser » avant que
+      // le geste reparte. Ici, dès que le pointeur change de sens, l'inclinaison
+      // quitte immédiatement la butée.
+      dragPitch = clampPitch(dragPitch + dy * PITCH_DEG_PER_PIXEL);
+      applyPitch(dragPitch);
+    }
   });
 
   const endDrag = (ev) => {
-    if (!isDragging) return;
-    isDragging = false;
+    if (!isDragging()) return;
+    dragMode = null;
     dial.classList.remove("is-dragging");
+    dial.classList.remove("is-pitching");
     if (ev && dial.hasPointerCapture(ev.pointerId)) {
       dial.releasePointerCapture(ev.pointerId);
     }
@@ -367,13 +446,23 @@ function wireHeadingCompass() {
     state.scene.orientTo(0);
   });
 
-  // Clavier : flèches gauche/droite = 1° (5° avec Maj), Début = nord.
+  // Clavier (alternative accessible aux deux gestes souris) :
+  //  - flèches gauche/droite = cap ±1° (±5° avec Maj) ;
+  //  - flèches haut/bas = inclinaison ±1° (±5° avec Maj), bornée à 0°/90° ;
+  //  - Début = nord.
+  // Ici Maj garde son rôle historique de MULTIPLICATEUR DE PAS, sur les deux
+  // axes : aucun conflit avec le Maj + glisser de la souris, qui passe par un
+  // chemin d'événements distinct (pointerdown, pas keydown).
   dial.addEventListener("keydown", (ev) => {
     const step = ev.shiftKey ? 5 : 1;
     if (ev.key === "ArrowLeft") {
       apply(state.scene.getBearing() - step);
     } else if (ev.key === "ArrowRight") {
       apply(state.scene.getBearing() + step);
+    } else if (ev.key === "ArrowUp") {
+      applyPitch(state.scene.getPitch() + step);
+    } else if (ev.key === "ArrowDown") {
+      applyPitch(state.scene.getPitch() - step);
     } else if (ev.key === "Home") {
       state.scene.orientTo(0);
     } else {
@@ -386,8 +475,17 @@ function wireHeadingCompass() {
   // ailleurs (clic-droit/ctrl-glisser, boussole MapLibre, maj+flèches) fait
   // tourner la rose. La garde isDragging évite la boucle de rétroaction.
   state.scene.onBearingChange((b) => {
-    if (isDragging) return;
+    if (isDragging()) return;
     render(b);
+  });
+
+  // Même synchronisation pour l'inclinaison : ctrl/clic-droit-glisser sur la
+  // carte et la boussole du NavigationControl (visualizePitch) rafraîchissent la
+  // lecture. La garde ne porte que sur le mode "pitch" : un glissement de cap
+  // peut, lui, laisser passer une mise à jour d'inclinaison venue d'ailleurs.
+  state.scene.onPitchChange((p) => {
+    if (dragMode === "pitch") return;
+    renderPitch(p);
   });
 }
 
