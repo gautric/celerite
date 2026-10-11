@@ -1,213 +1,220 @@
-# Inclinaison 0°–90° au cadran de boussole par Maj + glisser
+# Inclinaison du cadran au Ctrl + glisser, en plus du Maj + glisser
 
-Le cadran de boussole, qui ne pilotait que le cap, accepte désormais un second
-geste : Maj + glisser pilote l'inclinaison (pitch) de la caméra entre 0° (vue de
-dessus) et 90° (vue rasante). L'approche consiste à dédoubler le chemin de
-glissement sous un `dragMode` figé au `pointerdown`, à ajouter côté `Scene3D` un
-trio d'accesseurs (`getPitch` / `setPitch` / `onPitchChange`) en miroir exact de
-ceux du cap, et à borner l'inclinaison avec un `clampPitch` explicitement
-distingué de `normalizeBearing` — un cap s'enroule, une inclinaison bute. Le
-`maxPitch` de la carte passe de 85 à 90, décision justifiée par une lecture du
-bundle MapLibre 5.12.0 réellement chargé par `index.html`.
+Le cadran de boussole accepte désormais Ctrl comme second modificateur pour
+piloter l'inclinaison de la caméra. L'implémentation tient en une seule ligne de
+décision (`dragMode = wantsPitch(ev) ? "pitch" : "bearing"`, avec
+`wantsPitch = (ev) => ev.shiftKey || ev.ctrlKey`) : facteur `-0,5 °/px`, bornage
+de l'accumulateur dans `[0, 90]`, gel du mode au `pointerdown` et classes
+`is-dragging` / `is-pitching` sont repris sans duplication de logique, et le
+`keydown` du cadran n'a pas été touché. Le gros du travail porte sur le piège
+macOS : Ctrl + clic étant un clic secondaire pour le système, un garde
+`contextmenu` est posé sur `window` en phase de capture pendant le glissement et
+retiré dans quatre chemins de sortie (`pointerup`, `pointercancel`,
+`lostpointercapture`, `blur`). `setPointerCapture` est en outre protégé par un
+`try/catch`.
 
-Watch for : le cadran reste un `role="slider"` dont la valeur exposée est
-uniquement le cap, alors que Flèche haut/bas y modifie désormais un second axe
-sans restitution accessible (likely) ; le sens du geste retenu (monter =
-incliner) contredit la parenthèse « glisser vers le bas incline » du brief, choix
-assumé et documenté (confirmed) ; le mode inclinaison est hors d'atteinte en
-tactile pur, la touche Maj n'existant pas au doigt (confirmed).
+À surveiller : le garde `contextmenu` peut survivre au geste dans la branche
+`catch` de `setPointerCapture`, et la suppression du menu contextuel devient
+alors globale et durable (likely) ; un Ctrl + clic simple sur le cadran n'ouvre
+plus le menu natif, conséquence assumée mais réelle (confirmed) ; le garde est
+conditionné à `ev.ctrlKey` et non au mode retenu, donc un glissement
+d'inclinaison démarré au Maj avec le bouton droit reste exposé au menu
+(confirmed) ; l'écoute du `blur` de `window` termine aussi les glissements de
+cap, seul point où le chemin « bearing » n'est pas littéralement inchangé
+(confirmed) ; la nécessité du garde n'a jamais été reproduite, seule son action
+sur l'événement a été mesurée (confirmed, documenté).
 
 **Verdict**: APPROVED
 
-## High-level view
+## Vue d'ensemble
 
-Le dédoublement du geste passe par une seule variable d'état, `dragMode`
-(`null` / `"bearing"` / `"pitch"`), lue depuis `ev.shiftKey` une unique fois au
-`pointerdown`. Le chemin du cap n'est pas réécrit : son accumulateur angulaire
-non borné et `shortestAngleDelta` restent intacts, seule la condition d'entrée
-change.
+La condition d'entrée est le seul endroit où le geste change. Le mode est figé au
+`pointerdown` par une lecture unique des deux modificateurs, donc relâcher Ctrl
+en pleine course ne fait pas basculer d'axe, et Ctrl + Maj simultanés tombent en
+mode inclinaison sans code dédié. Tout le reste du chemin « pitch » —
+accumulateur borné à chaque pas, signe, classe CSS, `applyPitch` — est celui du
+Maj, inchangé.
 
-L'accumulateur d'inclinaison est borné à chaque pas, et non seulement à l'envoi
-vers la caméra. C'est le point de conception qui compte : sans cela, pousser
-contre une butée accumulerait une réserve invisible à rembourser avant que le
-geste reparte. L'évidence de vérification mesure exactement ce comportement
-(butée à 90, inversion de 20 px → 80,00 pile).
+`ev.button` n'est volontairement pas filtré : le code d'origine ne le lisait pas
+davantage, et un moteur peut rapporter `button === 2` sous Ctrl. Les deux valeurs
+ont été exercées sur l'application (+20,00° dans les deux cas), et la décision est
+écrite au point de décision, dans le README et dans le message de commit. Effet
+de bord conservé : un clic droit sans modificateur fait toujours tourner le cap.
 
-La borne 90 n'est pas une valeur forcée contre l'API : dans le bundle
-`maplibre-gl@5.12.0` — la version effectivement référencée par `index.html` —
-`setMaxPitch` ne refuse qu'une valeur supérieure à 180 ou inférieure à
-`minPitch`. La réserve restante est un confort de rendu entre 85° et 90° avec
-terrain 3D, documentée en commentaire et dans le README, non mesurée sur GPU
-réel.
+Le garde `contextmenu` est la partie risquée. Il est bien temporaire et bien
+retiré dans le cas nominal, posé sur `window` en capture pour rester efficace
+quand le pointeur sort des 96 px du cadran. Deux réserves : il est conditionné à
+`ev.ctrlKey` plutôt qu'au mode « pitch » réellement retenu, et aucun chemin de
+sortie ne le rattrape si `setPointerCapture` échoue et que le relâchement a lieu
+hors du cadran.
 
-La surface d'interaction gagne un geste souris, deux touches clavier (Flèche
-haut/bas, ±1° et ±5° avec Maj) et une seconde ligne de lecture `#hc-pitch`. Le
-rôle historique de Maj au clavier — multiplicateur de pas — est préservé sur les
-deux axes, les deux usages de Maj ne se croisant pas (chemins `keydown` vs
-`pointerdown`).
+Conséquence visible et assumée : l'appui Ctrl démarre un glissement de 0 px, donc
+le garde est déjà actif quand le `contextmenu` arrive, et un Ctrl + clic simple
+sur le cadran n'ouvre plus le menu. C'est précisément le geste que les
+utilisateurs de trackpad macOS emploient pour ouvrir un menu contextuel.
 
-Côté accessibilité, l'aide visible est complétée et référencée par
-`aria-describedby`, mais le modèle ARIA du composant n'a pas suivi : un
-`role="slider"` n'expose qu'une valeur, et c'est le cap. L'inclinaison n'est donc
-annoncée par aucun attribut, alors que les flèches verticales — celles qu'un
-utilisateur de lecteur d'écran essaiera en premier sur un slider — la modifient.
+L'évidence navigateur est sérieuse : Chrome for Testing 142 en headful,
+inclinaison lue sur la caméra via le `transform` de l'icône du
+`NavigationControl`, valeurs exactes (+20,00° pour 40 px en `button=0` comme en
+`button=2`, butées à 90,00 et 0,00, inversion à 80,00 et 10,00). Ce qui manque
+est reconnu plutôt que masqué : aucun geste à la main, aucun autre moteur, et
+surtout le mode d'échec que le garde est censé empêcher n'a pas pu être
+reproduit — son utilité reste argumentée, pas mesurée, alors que son coût (perte
+du Ctrl + clic simple) est mesuré.
 
 <details>
-<summary>Issues (5)</summary>
+<summary>Issues (7)</summary>
 
-1. **Inclinaison non exposée au modèle ARIA** — le cadran reste un
-   `role="slider"` dont `aria-valuenow` / `aria-valuetext` ne portent que le cap,
-   et les enfants d'un slider sont présentationnels : le texte `incl. X°` n'est
-   pas restitué. Flèche haut/bas modifie donc une valeur muette. Envisager
-   `role="group"` avec deux sliders, ou au minimum injecter l'inclinaison dans
-   `aria-valuetext` / une zone `aria-live`.
-2. **Sens du geste contraire à une lecture du brief** — monter le pointeur
-   incline (cohérence avec `pitchDegreesPerPixelMoved = -0,5` du gestionnaire
-   natif), là où le brief évoquait « glisser vers le bas incline ». Arbitrage
-   assumé et documenté (plan D2, README, commit) ; à confirmer par le demandeur,
-   l'inversion ne coûtant qu'un signe sur `PITCH_DEG_PER_PIXEL`.
-3. **Mode inclinaison inatteignable en tactile** — `ev.shiftKey` est le seul
-   déclencheur et l'aide-mémoire ne mentionne que « Maj + glisser ». Prévoir un
-   repli au doigt (appui long, double-pointeur sur le cadran) ou mentionner le
-   geste natif `touchPitch` dans l'aide.
-4. **Valeur initiale `incl. 62°` codée en dur dans le HTML** — duplique le
-   `pitch: 62` de `js/scene3d.js` ; la ligne reste fausse si la valeur par défaut
-   change et que le câblage n'a pas encore émis. Laisser un gabarit neutre
-   (`incl. —°`) ou aligner les deux sources.
-5. **Position de l'aide-mémoire couplée au nombre de lignes du cadran** —
-   `.nav-hint { top }` passe de 124 à 138 px en dur pour absorber `#hc-pitch` ;
-   toute troisième ligne rouvrira le même ajustement manuel. Un flux normal sous
-   le cadran supprimerait le réglage.
+1. **Fuite du garde dans la branche `catch`** — si `setPointerCapture` lève et
+   que le pointeur est relâché hors du cadran, aucun chemin de sortie ne
+   s'exécute : `is-pitching` et le garde `contextmenu` global survivent jusqu'au
+   prochain `blur` de la fenêtre. Retirer le garde et remettre `dragMode = null`
+   dans le `catch`, ou poser `pointerup`/`pointermove` sur `document` le temps du
+   geste quand la capture a échoué.
+2. **Ctrl + clic simple ne donne plus le menu sur le cadran** — l'appui installe
+   le garde avant l'arrivée du `contextmenu`. Si on veut conserver le menu,
+   n'installer le garde qu'au premier `pointermove` réel (ou au-delà d'un seuil
+   de quelques pixels) plutôt qu'au `pointerdown`.
+3. **Garde conditionné au modificateur et non au mode** — `if (ev.ctrlKey)`
+   laisse un glissement d'inclinaison démarré au Maj avec le bouton secondaire
+   exposé au menu natif. Conditionner sur `dragMode === "pitch"` aligne le garde
+   sur son objectif déclaré.
+4. **`blur` de `window` termine aussi les glissements de cap** — l'écoute est
+   inconditionnelle, donc le chemin « bearing » n'est pas littéralement
+   inchangé. Soit l'assumer explicitement dans la documentation du geste, soit
+   ne clore sur `blur` que lorsqu'un garde est posé.
+5. **Nécessité du garde non reproduite** — toutes les entrées viennent de CDP ;
+   le mode d'échec (menu natif qui tue le pointeur) n'a jamais été observé, seule
+   l'annulation de l'événement l'a été. Faire valider le geste à la main sur
+   trackpad avant de considérer le compromis du point 2 comme acquis.
+6. **Ordre `pointerdown` → `contextmenu` supposé hors Chrome** — le garde ne
+   fonctionne que si `contextmenu` arrive après l'appui ; seul Chrome 142 a été
+   mesuré, Safari et Firefox ne l'ont pas été. Vérifier l'ordre sur un second
+   moteur, Firefox/macOS en priorité puisqu'il rapporte `button === 2`.
+7. **`#nav-hint` emploie « Ctrl » dans deux rôles** — « Ctrl/clic-droit-glisser :
+   pivoter/incliner » (carte) puis « Maj ou Ctrl + glisser le cadran »
+   (inclinaison seule) dans la même phrase. Distinguer les deux cibles dans la
+   formulation.
 
 </details>
 
 <details>
 <summary>Details</summary>
 
-### Deux gestes sur une cible, départagés une seule fois
+### Le garde `contextmenu` et ses chemins de sortie
 
-`dragMode` remplace le booléen `isDragging` et porte à la fois l'état « un
-glissement est en cours » et « lequel des deux axes il pilote ». L'évidence
-couvre les deux sens de bascule de Maj en cours de course (tests 5 et 5bis).
-
-```
-pointerdown ──┬─ shiftKey ──▶ dragMode="pitch"    lastPointerY, dragPitch=getPitch()
-              └─ sinon   ──▶ dragMode="bearing"  lastPointerAngle, dragBearing=getBearing()
-
-pointermove ──┬─ "bearing" ▶ shortestAngleDelta ▶ dragBearing (non borné, s'enroule)
-              └─ "pitch"   ▶ dy × −0,5          ▶ dragPitch  (borné 0..90 à chaque pas)
-
-pointerup/cancel ─▶ dragMode=null, retrait de .is-dragging ET .is-pitching
-```
-
-Le calcul du cap n'est pas touché (mêmes `pointerAngle`, `shortestAngleDelta`,
-accumulateur non borné), et la garde anti-boucle `onBearingChange` est désormais
-dérivée du mode : un glissement d'inclinaison gèle donc aussi la réécriture du
-cap depuis la carte.
-
-Les deux gardes ne sont pas symétriques, et c'est voulu : `onPitchChange` n'est
-ignoré que si `dragMode === "pitch"`, de sorte qu'un glissement de cap laisse
-passer une mise à jour d'inclinaison venue d'ailleurs. Comme `setBearing` émet
-`move` à chaque pas, un glissement de cap déclenche aussi un `renderPitch` par
-événement — écriture idempotente, coût d'une affectation de `textContent` par
-trame.
-
-### Bornage de l'accumulateur, pas seulement de la consigne
+Le trou est dans la branche de dégradation :
 
 ```js
-dragPitch = clampPitch(dragPitch + dy * PITCH_DEG_PER_PIXEL);
-applyPitch(dragPitch);
+try {
+  dial.setPointerCapture(ev.pointerId);
+} catch {
+  /* capture indisponible : glissement limité à la surface du cadran */
+}
 ```
 
-Le clamp porte sur l'état cumulé, ce qui supprime la « réserve » que produirait
-un clamp posé uniquement à l'entrée de `setPitch`. Le même `clampPitch` est
-réappliqué dans `applyPitch`, `Scene3D.setPitch`, `getPitch` et `renderPitch` :
-redondant, mais aucun chemin (clavier, synchronisation retour, valeur non finie)
-ne peut afficher ou pousser une valeur hors plage. Le repli sur `PITCH_MIN` pour
-une entrée non finie est sûr côté caméra mais silencieux : un `getPitch()` qui
-renverrait `NaN` ramènerait la vue à plat sans aucune trace.
+Sans capture, `pointermove` et `pointerup` ne sont livrés au cadran que tant que
+le pointeur reste au-dessus de ses 96 px. Un relâchement en dehors ne produit
+donc ni `pointerup`, ni `pointercancel`, ni `lostpointercapture` sur le cadran :
+`dragMode` reste `"pitch"`, `is-pitching` reste collée, et le garde
+`contextmenu` posé sur `window` continue d'annuler le menu **dans toute la
+page**. C'est exactement la propriété que la tâche interdisait — une suppression
+globale et durable — atteinte par un chemin que personne n'emprunte en Chrome.
+Le commentaire du `catch` décrit la dégradation du geste, pas celle de l'état.
 
-L'évidence vérifie les deux mécaniques côte à côte (`clampPitch(120) === 90`
-face à `normalizeBearing(-10) === 350`), puis les butées au navigateur, souris
-et clavier, sans wrap-around ni réserve.
+Le plan avait prévu un repli (listeners de secours sur `window`) et l'a écarté
+sur mesure : la capture n'a jamais échoué ni été perdue sous Ctrl dans Chrome
+142. Écarter du code mort est défendable ; le correctif nécessaire est plus
+petit que ce repli — retirer le garde et remettre `dragMode = null` dans le
+`catch`.
 
-### Borne 90 et réserve de rendu
+La seconde réserve est le déclencheur. Le garde existe pour qu'un `contextmenu`
+ne tue pas un glissement d'inclinaison, mais il est posé sur `ev.ctrlKey`, pas
+sur `dragMode === "pitch"`. Un Maj + glisser démarré au bouton droit — possible,
+puisque `ev.button` n'est volontairement pas filtré — émet un `contextmenu` sans
+garde. Le nettoyage d'état est alors assuré par `lostpointercapture`, donc rien
+ne reste collé, mais le geste meurt. La condition `dragMode === "pitch"`
+couvrirait les deux cas sans élargir la neutralisation au chemin du cap.
 
-`maxPitch` et `minPitch` de la carte viennent maintenant de `PITCH_MAX` /
-`PITCH_MIN`, donc la plage de l'interface et celle de la caméra ne peuvent plus
-diverger. Le commentaire remplacé affirmait que 85 était le maximum MapLibre ; la
-nouvelle justification est tracée aux trois endroits utiles (constantes, README,
-message de commit) et repose sur une lecture du bundle 5.12.0 — version que
-`index.html` charge effectivement (`unpkg.com/maplibre-gl@5.12.0`, vérifié au
-spot-check). L'évidence ajoute qu'aucun message console relatif à `pitch`
-n'apparaît et que 90° est atteint à l'exécution, par le cadran comme par le
-chemin natif.
+### Ctrl + clic simple sur le cadran
 
-Reste la réserve de confort : entre ~85° et 90°, terrain 3D activé, la caméra
-rase l'horizon et demande beaucoup de tuiles. La mesure sous WebGL logiciel
-n'aurait rien prouvé, ce que l'évidence dit explicitement ; la réserve est donc
-documentée mais non quantifiée sur GPU réel.
+La séquence mesurée est `pointerdown` → `contextmenu` → … → `pointerup`. Comme le
+mode est décidé au `pointerdown` et que le garde est posé dans la même foulée, un
+Ctrl + clic *sans déplacement* est traité comme un glissement d'inclinaison de
+0 px et son `contextmenu` est avalé. Sur macOS, Ctrl + clic est le geste de menu
+contextuel par défaut au trackpad : sur ces 96 px, il n'ouvre plus rien.
 
-### Surface clavier et accessibilité
+Le compromis est documenté dans `verification.md`, le README et le message de
+commit plutôt que découvert après coup. Reste que son coût est mesuré alors que
+le bénéfice ne l'est pas : installer le garde au premier `pointermove` réel, ou
+au-delà d'un seuil de quelques pixels, rendrait le clic simple au menu natif tout
+en protégeant le glissement.
 
-Flèche haut/bas rejoint le `keydown` existant avec le même pas
-`ev.shiftKey ? 5 : 1`, sans toucher gauche/droite ; `preventDefault` n'est appelé
-que sur les touches consommées, donc le défilement de page reste neutralisé sur
-les deux nouvelles touches. L'évidence pousse les deux butées au clavier et
-mesure l'absence d'effet sur le cap.
+### Chemin du cap : un seul écart
 
-Le modèle ARIA, lui, reste mono-valeur. `aria-label` et `title` décrivent le
-nouveau geste, `aria-describedby` pointe le texte visible de `#nav-hint` qui le
-mentionne aussi, mais `aria-valuenow` / `aria-valuetext` continuent de ne porter
-que le cap, et `#hc-pitch` est un enfant d'un `role="slider"` — donc
-présentationnel et non restitué. Conséquence : sur ce slider, les flèches
-verticales modifient la caméra sans qu'aucune valeur ne soit annoncée, et un
-utilisateur de lecteur d'écran qui essaie Flèche haut sur un slider s'attend
-plutôt à voir changer la valeur annoncée (le cap). Le constat est raisonné sur la
-spécification ARIA, pas écouté : l'évidence indique clairement qu'aucune
-restitution vocale n'a été testée.
+La branche `bearing`, les accumulateurs et le `keydown` (qui ne lit toujours que
+`ev.key` et `ev.shiftKey`) sont intacts. L'exception est
+`window.addEventListener("blur", endDrag)`, posé sans condition : un glissement
+de cap interrompu par un `Cmd+Tab` est désormais clos, là où il survivait
+auparavant. Le sens va vers plus de sûreté — c'est ce chemin que
+`verification.md` exerce en V7c pour montrer qu'aucun garde ne fuit — mais c'est
+un changement de comportement sur un chemin déclaré strictement inchangé, et il
+n'est signalé ni dans le README ni dans `verification.md`.
 
-Même limite côté tactile : `ev.shiftKey` est le seul déclencheur, donc le mode
-inclinaison n'existe pas au doigt. L'alternative clavier et le `touchPitch` natif
-de MapLibre couvrent le besoin, mais l'aide-mémoire visible ne mentionne que
-« Maj + glisser le cadran ».
+### Évidence : solide sur les valeurs, reconnue incomplète sur le geste
 
-### Évidence de vérification
+Les chiffres tranchent les deux risques identifiés au plan : +20,00° exactement
+pour 40 px écarte le geste appliqué deux fois par `dragRotate`, et les inversions
+à 80,00 et 10,00 exactement prouvent que c'est l'accumulateur qui est borné, sans
+réserve à rembourser. Le piège d'instrumentation est consigné (attendre
+`#hc-value !== "0° N"`, le cadran n'étant câblé qu'après `Scene3D.init()`), ce qui
+rend la passe reproductible.
 
-Le dépôt n'a ni `package.json` ni runner, et aucune dépendance n'a été ajoutée :
-l'outillage de pilotage du navigateur a été installé hors du dépôt puis
-supprimé. L'évidence couvre `node --check` sur les deux fichiers modifiés, des
-assertions sur `clampPitch` et les constantes, puis un parcours scripté dans
-Chrome où l'inclinaison est lue **sur la caméra** via le `rotateX` de l'icône du
-`NavigationControl`, et non sur l'affichage qu'elle sert à valider : la
-concordance des deux est une mesure, pas une tautologie.
+La limite est posée par `verification.md` lui-même : le mode d'échec contre
+lequel le garde protège n'a jamais été reproduit. En clic droit sans modificateur
+— donc sans garde — le glissement de cap a continué normalement après un
+`contextmenu` non annulé : dans cet environnement piloté, le menu natif
+n'interrompt pas le pointeur. L'efficacité du garde est donc établie au niveau de
+l'événement (`defaultPrevented: true` pendant le geste, `false` après et
+ailleurs), son utilité reste un raisonnement sur le comportement documenté des
+navigateurs. Le plan exigeait un pointeur physique pour V3/V4/V7 ; cette exigence
+n'est pas satisfaite, elle est déclarée non satisfaite. Les entrées CDP
+produisent des événements `isTrusted` et Chrome émet bien un `contextmenu` réel
+sous Ctrl, donc la couche moteur est couverte ; ce qui échappe est la couche
+native macOS et l'affichage effectif du menu.
 
-Non vérifié, et explicitement listé comme tel : restitution par lecteur d'écran,
-geste en tactile réel, navigateurs autres que Chrome, confort de rendu 85–90° sur
-GPU réel.
+Le garde dépend aussi d'un ordre d'événements : `contextmenu` doit arriver après
+le `pointerdown`. C'est mesuré en Chrome 142 et en lui seul. Safari et Firefox
+sont déclarés non testés, et Firefox/macOS est justement le moteur visé par la
+décision « aucun filtrage du bouton ».
 
-### Fichiers de tâche embarqués dans le même commit
+### Écart V8 assumé
 
-Le commit emporte aussi `.agents/tasks/plan.md` (réécrit), `verification.md`
-(réécrit) et `review.json` réinitialisé à `CHANGES_REQUESTED` avec une note
-expliquant que le verdict APPROVED de la tâche précédente aurait sinon satisfait
-d'emblée la condition d'arrêt de la boucle de revue. `requirements.md` et
-`review.md` restent ceux de tâches antérieures et ne décrivent pas celle-ci, ce
-qui rend le répertoire de tâche ambigu pour un lecteur extérieur. Aucun impact
-sur le code livré.
+`Ctrl+↑` et `Ctrl+←` continuent d'agir sur le cadran, alors que le plan attendait
+l'inverse. Le `keydown` ne lit que `ev.key` et `ev.shiftKey`, il en était déjà
+ainsi avant la tâche, et faire échouer `Ctrl+flèches` aurait exigé la
+modification que la consigne interdisait. Le constat est documenté comme « non
+satisfait par conception » plutôt que présenté comme conforme.
 
 </details>
 
 <details>
 <summary>Fichiers modifiés</summary>
 
-- `js/scene3d.js` — `PITCH_MIN`/`PITCH_MAX`, `clampPitch`, `getPitch`/`setPitch`/`onPitchChange`, `maxPitch` 85 → 90.
-- `js/app.js` — `dragMode` figé au `pointerdown`, accumulateur d'inclinaison borné, Flèche haut/bas, synchronisation retour du pitch.
-- `index.html` — lecture `#hc-pitch`, `aria-label` / `title` / `aria-describedby` complétés, aide-mémoire enrichie, commentaire de conception.
-- `css/style.css` — `.is-pitching` (curseur `ns-resize`), `.hc-pitch`, `.nav-hint { top: 124px → 138px }`.
-- `README.md` — geste documenté, choix de la borne 90 et du sens du geste.
-- `.agents/tasks/{plan,verification,review.json}` — documents de tâche.
+- `js/app.js` — `wantsPitch()` et élargissement de la décision de mode, garde
+  `contextmenu` temporaire (pose/retrait), `try/catch` autour de
+  `setPointerCapture`, `endDrag` câblé sur `lostpointercapture` et sur le `blur`
+  de `window`, commentaires français sur le piège macOS et sur `ev.button`.
+- `index.html` — commentaire du cadran, `aria-label`, `title`, texte de
+  `#nav-hint` et commentaire de `#hc-pitch` mis à « Maj ou Ctrl ».
+- `README.md` — puces du cadran, piège macOS, et deux paragraphes d'hypothèses
+  (pas de filtrage de `ev.button`, garde `contextmenu` temporaire).
+- `.agents/tasks/plan.md`, `.agents/tasks/verification.md` — documents de la
+  tâche ; `review.json` remis à `PENDING` par la planification.
+- Aucune modification de `js/scene3d.js` ni de `css/style.css` ; aucune
+  dépendance, aucune étape de build.
 
-Diff complet : `git -C /Users/gautric/Source/divers/laser/.worktrees/pitch-souris-shift diff main...`
+Diff complet :
+`git -C /Users/gautric/Source/divers/laser/.worktrees/pitch-ctrl-souris diff main...pitch-ctrl-souris`
 
 </details>

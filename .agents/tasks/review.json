@@ -1,5 +1,48 @@
 {
-  "verdict": "PENDING",
-  "findings": [],
-  "note": "Fichier réinitialisé par l'étape de planification de la tâche « inclinaison au Ctrl + glisser ». Le verdict APPROVED qu'il contenait appartenait à la tâche PRÉCÉDENTE (Maj + glisser) et aurait pu satisfaire à tort la condition d'arrêt de la boucle de construction. Le relecteur de la présente tâche doit réécrire ce fichier avec « verdict » = « APPROVED » ou « CHANGES_REQUESTED »."
+  "verdict": "APPROVED",
+  "findings": [
+    {
+      "label": "Fuite du garde contextmenu dans la branche catch",
+      "confidence": "likely",
+      "blocking": false,
+      "detail": "Si setPointerCapture lève (le cas même pour lequel le try/catch existe) et que le pointeur est relâché hors des 96 px du cadran, aucun chemin de sortie ne s'exécute : pointerup, pointercancel et lostpointercapture sont écoutés sur le cadran uniquement. dragMode reste \"pitch\", la classe is-pitching reste collée, et le garde contextmenu posé sur window continue d'annuler le menu dans TOUTE la page jusqu'au prochain blur de la fenêtre — exactement la suppression globale et durable que la tâche interdisait. Mesuré comme non atteignable en Chrome 142 (la capture n'a jamais échoué), d'où le caractère non bloquant. Correctif : removeContextMenuGuard() + dragMode = null dans le catch, ou pointerup/pointermove sur document le temps du geste quand la capture a échoué."
+    },
+    {
+      "label": "Ctrl + clic simple n'ouvre plus le menu contextuel sur le cadran",
+      "confidence": "confirmed",
+      "blocking": false,
+      "detail": "Le mode est décidé au pointerdown et le garde est posé dans la même foulée, donc un Ctrl + clic sans déplacement est un glissement d'inclinaison de 0 px dont le contextmenu est avalé. Or Ctrl + clic est le geste de menu contextuel par défaut au trackpad macOS. Conséquence assumée et documentée (verification.md, README, message de commit), limitée aux 96 px du cadran. Alternative si on veut la récupérer : installer le garde au premier pointermove réel ou au-delà d'un seuil de quelques pixels, plutôt qu'au pointerdown."
+    },
+    {
+      "label": "Garde conditionné à ev.ctrlKey et non au mode retenu",
+      "confidence": "confirmed",
+      "blocking": false,
+      "detail": "installContextMenuGuard() est appelé sous if (ev.ctrlKey). Un glissement d'inclinaison démarré au Maj avec le bouton secondaire — possible puisque ev.button n'est volontairement pas filtré — émet donc un contextmenu sans garde : l'état est nettoyé par lostpointercapture, mais le geste meurt. Conditionner sur dragMode === \"pitch\" aligne le garde sur son objectif déclaré sans élargir la neutralisation au chemin du cap."
+    },
+    {
+      "label": "Le blur de window termine aussi les glissements de cap",
+      "confidence": "confirmed",
+      "blocking": false,
+      "detail": "window.addEventListener(\"blur\", endDrag) est posé sans condition : un glissement de cap interrompu par un Cmd+Tab est désormais clos, là où il survivait sur main. Le sens va vers plus de sûreté (c'est le chemin exercé par V7c pour montrer qu'aucun garde ne fuit), mais c'est le seul endroit où le chemin « bearing », déclaré strictement inchangé, change de comportement — et ce n'est signalé ni dans le README ni dans verification.md. Soit l'assumer explicitement, soit ne clore sur blur que lorsqu'un garde est posé."
+    },
+    {
+      "label": "Nécessité du garde argumentée, non reproduite",
+      "confidence": "confirmed",
+      "blocking": false,
+      "detail": "Toutes les entrées viennent de CDP (événements isTrusted, Chrome émet bien un contextmenu réel sous Ctrl) : le mode d'échec que le garde est censé empêcher — menu natif qui annule le pointeur — n'a jamais été observé. En clic droit sans modificateur, donc sans garde, le glissement de cap a continué normalement après un contextmenu non annulé. L'efficacité du garde est établie au niveau de l'événement (defaultPrevented true pendant le geste, false après et ailleurs), son utilité reste un raisonnement. Le plan exigeait un pointeur physique pour V3/V4/V7 ; verification.md déclare l'exigence non satisfaite au lieu de la masquer. À faire valider à la main sur trackpad avant de considérer le compromis « plus de Ctrl + clic simple » comme acquis."
+    },
+    {
+      "label": "Ordre pointerdown -> contextmenu supposé hors Chrome",
+      "confidence": "possible",
+      "blocking": false,
+      "detail": "Le garde ne protège le geste que si contextmenu arrive après le pointerdown ; cet ordre est mesuré en Chrome 142 et en lui seul. Safari et Firefox sont déclarés non testés, alors que Firefox/macOS est précisément le moteur visé par la décision « aucun filtrage de ev.button » (button === 2 sous Ctrl). Vérifier l'ordre des événements sur un second moteur."
+    },
+    {
+      "label": "#nav-hint emploie « Ctrl » dans deux rôles différents",
+      "confidence": "confirmed",
+      "blocking": false,
+      "detail": "La même phrase dit « Ctrl/clic-droit-glisser : pivoter/incliner » (geste natif de la carte, cap + inclinaison) puis « Maj ou Ctrl + glisser le cadran : inclinaison 0-90° » (inclinaison seule). Les deux affirmations sont exactes mais la distinction de cible n'est pas évidente à la lecture ; reformuler pour séparer carte et cadran."
+    }
+  ],
+  "reviewDoc": "/Users/gautric/Source/divers/laser/.worktrees/pitch-ctrl-souris/.agents/tasks/review.md"
 }
