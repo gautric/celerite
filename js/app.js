@@ -290,12 +290,23 @@ function wireHeadingCompass() {
 
   // Mode de glissement, FIGÉ au pointerdown pour toute la durée du geste :
   //   null       -> aucun glissement en cours ;
-  //   "bearing"  -> glisser sans Maj, on pilote le cap (comportement d'origine) ;
-  //   "pitch"    -> glisser avec Maj, on pilote l'inclinaison.
-  // On lit ev.shiftKey UNE SEULE FOIS, au pointerdown : appuyer ou relâcher Maj
-  // pendant le glissement ne bascule donc pas d'un axe à l'autre au milieu du
-  // geste (bascule cap <-> inclinaison en pleine course = très surprenant).
+  //   "bearing"  -> glisser SANS modificateur, on pilote le cap (comportement
+  //                 d'origine, strictement inchangé) ;
+  //   "pitch"    -> glisser avec Maj OU Ctrl, on pilote l'inclinaison.
+  // On lit les modificateurs UNE SEULE FOIS, au pointerdown : appuyer ou
+  // relâcher Maj/Ctrl pendant le glissement ne bascule donc pas d'un axe à
+  // l'autre au milieu du geste (bascule cap <-> inclinaison en pleine course =
+  // très surprenant).
   let dragMode = null;
+
+  /**
+   * Le glissement doit-il piloter l'inclinaison plutôt que le cap ?
+   * Maj OU Ctrl, indifféremment : les deux touches donnent EXACTEMENT le même
+   * geste (même facteur, mêmes bornes, même classe CSS). Les deux enfoncées
+   * ensemble donnent donc aussi l'inclinaison, sans code dédié.
+   * Pas de metaKey (Cmd est capté par macOS) ni d'altKey : non demandés.
+   */
+  const wantsPitch = (ev) => ev.shiftKey || ev.ctrlKey;
   // Garde anti-boucle : pendant le glissement, c'est le cadran qui pilote la
   // carte ; on ignore donc les événements "rotate"/"move" qu'il provoque, pour
   // ne pas réécrire la rotation en cours depuis la carte.
@@ -378,29 +389,88 @@ function wireHeadingCompass() {
     dial.addEventListener(type, (ev) => ev.stopPropagation());
   }
 
-  // Glissement continu. Deux gestes sur la même cible, départagés par Maj au
-  // moment du pointerdown (et seulement à ce moment-là, cf. dragMode) :
-  //  - SANS Maj : cap. atan2 pour l'angle pointeur, cumul des écarts courts
-  //    pour franchir 0°/360° sans discontinuité, setBearing immédiat pour
-  //    suivre le pointeur sans latence (pitch / centre / zoom préservés) ;
-  //  - AVEC Maj : inclinaison. Déplacement vertical en pixels × -0,5 °/px
-  //    (convention native MapLibre), setPitch immédiat (cap / centre / zoom
-  //    préservés).
+  /**
+   * PIÈGE macOS — Ctrl + clic est traduit par le système en CLIC SECONDAIRE :
+   * un événement "contextmenu" est émis, et si le menu natif s'ouvre, le
+   * navigateur annule le pointeur en cours (capture perdue, "pointerup" qui
+   * n'arrive jamais). Le glissement d'inclinaison mourrait au premier pixel et
+   * la classe "is-pitching" resterait collée sur le cadran.
+   *
+   * On pose donc un garde TEMPORAIRE : il n'existe que pendant un glissement
+   * déclenché au Ctrl, et il est retiré dans TOUS les chemins de sortie du
+   * geste (pointerup, pointercancel, lostpointercapture, blur de la fenêtre).
+   * Hors glissement, un clic droit ou un Ctrl + clic simple rouvre normalement
+   * le menu natif, sur le cadran comme ailleurs dans la page : il n'y a AUCUNE
+   * suppression globale ni permanente du menu contextuel.
+   *
+   * Pourquoi sur window en phase de CAPTURE et pas sur le cadran : si la
+   * capture de pointeur est perdue ou si le pointeur a quitté les 96 px du
+   * cadran, l'événement "contextmenu" cible le canvas de la carte — un
+   * listener posé sur le cadran ne le verrait pas passer.
+   */
+  let contextMenuGuard = null;
+  function installContextMenuGuard() {
+    if (contextMenuGuard) return;
+    contextMenuGuard = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+    };
+    window.addEventListener("contextmenu", contextMenuGuard, true);
+  }
+  function removeContextMenuGuard() {
+    if (!contextMenuGuard) return;
+    window.removeEventListener("contextmenu", contextMenuGuard, true);
+    contextMenuGuard = null;
+  }
+
+  // Glissement continu. Deux gestes sur la même cible, départagés par les
+  // modificateurs au moment du pointerdown (et seulement à ce moment-là, cf.
+  // dragMode) :
+  //  - SANS modificateur : cap. atan2 pour l'angle pointeur, cumul des écarts
+  //    courts pour franchir 0°/360° sans discontinuité, setBearing immédiat
+  //    pour suivre le pointeur sans latence (pitch / centre / zoom préservés) ;
+  //  - AVEC Maj OU Ctrl : inclinaison. Déplacement vertical en pixels × -0,5
+  //    °/px (convention native MapLibre), setPitch immédiat (cap / centre /
+  //    zoom préservés).
   dial.addEventListener("pointerdown", (ev) => {
     ev.stopPropagation();
     ev.preventDefault();
-    // Lecture UNIQUE de Maj : le mode est figé jusqu'au relâchement.
-    dragMode = ev.shiftKey ? "pitch" : "bearing";
+    // Lecture UNIQUE des modificateurs : le mode est figé jusqu'au relâchement.
+    //
+    // CHOIX ASSUMÉ : ev.button n'est PAS filtré, le mode ne dépend QUE des
+    // modificateurs. Deux raisons. (1) Sur macOS, Ctrl + clic est traduit en
+    // clic secondaire, et selon le moteur le pointerdown peut être rapporté
+    // avec button === 2 : rejeter le bouton secondaire casserait donc le
+    // Ctrl + glisser sur ces moteurs. (2) Le code d'origine ne lisait pas
+    // ev.button non plus (n'importe quel bouton démarrait un glissement de
+    // cap) ; ajouter un filtre ici changerait le geste du cap, qui doit rester
+    // strictement inchangé. Un Ctrl + glisser entre donc en mode inclinaison
+    // qu'il arrive en button 0 ou en button 2, et un clic secondaire sans
+    // modificateur garde son comportement actuel (glissement de cap).
+    dragMode = wantsPitch(ev) ? "pitch" : "bearing";
     if (dragMode === "pitch") {
       dragPitch = state.scene.getPitch();
       lastPointerY = ev.clientY;
       dial.classList.add("is-pitching");
+      // Garde posé uniquement quand c'est Ctrl qui a déclenché le geste : avec
+      // Maj seul, aucun menu contextuel n'est en jeu, on ne touche à rien.
+      if (ev.ctrlKey) installContextMenuGuard();
     } else {
       dragBearing = state.scene.getBearing();
       lastPointerAngle = pointerAngle(ev);
       dial.classList.add("is-dragging");
     }
-    dial.setPointerCapture(ev.pointerId);
+    // Capture protégée : si le système a déjà transformé l'appui en clic
+    // secondaire, le pointeur peut ne plus être actif et setPointerCapture
+    // lever (InvalidStateError / NotFoundError). On accepte la dégradation
+    // plutôt que de faire échouer tout le gestionnaire : sans capture, les
+    // pointermove ne sont livrés que tant que le pointeur reste au-dessus du
+    // cadran (96 px de large), le geste est donc plus court mais pas cassé.
+    try {
+      dial.setPointerCapture(ev.pointerId);
+    } catch {
+      /* capture indisponible : glissement limité à la surface du cadran */
+    }
     dial.focus();
   });
 
@@ -428,16 +498,28 @@ function wireHeadingCompass() {
   });
 
   const endDrag = (ev) => {
+    // Retrait du garde AVANT la garde d'idempotence : quel que soit l'état du
+    // glissement, le menu contextuel doit redevenir disponible.
+    removeContextMenuGuard();
     if (!isDragging()) return;
     dragMode = null;
     dial.classList.remove("is-dragging");
     dial.classList.remove("is-pitching");
-    if (ev && dial.hasPointerCapture(ev.pointerId)) {
+    if (ev && ev.pointerId !== undefined && dial.hasPointerCapture(ev.pointerId)) {
       dial.releasePointerCapture(ev.pointerId);
     }
   };
   dial.addEventListener("pointerup", endDrag);
   dial.addEventListener("pointercancel", endDrag);
+  // lostpointercapture : filet de sécurité si le navigateur nous retire la
+  // capture sans pointerup ni pointercancel (cas plausible quand le système
+  // requalifie l'appui en clic secondaire). Sans lui, dragMode, la classe CSS
+  // et le garde contextmenu pourraient rester collés.
+  dial.addEventListener("lostpointercapture", endDrag);
+  // Perte de focus de la fenêtre (Cmd+Tab, changement d'onglet) en pleine
+  // course : on clôt le geste plutôt que de laisser un garde survivre à la page
+  // visible. L'événement blur n'a pas de pointerId, endDrag le gère.
+  window.addEventListener("blur", endDrag);
 
   // Double-clic : retour animé au nord (seul le cap change).
   dial.addEventListener("dblclick", (ev) => {

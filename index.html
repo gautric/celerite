@@ -143,8 +143,11 @@
              change (pitch, centre et zoom préservés). Placée en haut à gauche
              pour ne pas recouvrir le NavigationControl (haut à droite).
 
-             MAJ + GLISSER = INCLINAISON (pitch), de 0° (vue de dessus, carte à
-             plat) à 90° (vue rasante au ras de l'horizon). Le geste vertical
+             MAJ OU CTRL + GLISSER = INCLINAISON (pitch), de 0° (vue de dessus,
+             carte à plat) à 90° (vue rasante au ras de l'horizon). Les deux
+             modificateurs sont acceptés indifféremment, et donnent exactement
+             le même geste ; les deux enfoncés ensemble donnent aussi
+             l'inclinaison. Le geste vertical
              reprend la convention NATIVE de MapLibre
              (pitchDegreesPerPixelMoved = -0,5 °/pixel, la même que
              ctrl/clic-droit-glisser sur la carte et que la boussole du
@@ -153,10 +156,16 @@
              L'inclinaison est BORNÉE aux deux extrémités, jamais enroulée :
              passé 0° ou 90°, le geste n'a plus d'effet et repart dès que le
              pointeur change de sens.
-             MODE FIGÉ AU DÉBUT DU GESTE : la touche Maj n'est lue qu'au
+             MODE FIGÉ AU DÉBUT DU GESTE : Maj et Ctrl ne sont lus qu'au
              pointerdown, et le mode retenu (cap ou inclinaison) vaut pour tout
-             le glissement — appuyer ou relâcher Maj en cours de route ne
+             le glissement — appuyer ou relâcher Maj/Ctrl en cours de route ne
              bascule pas d'un axe à l'autre au milieu du geste.
+             PIÈGE macOS : Ctrl + clic est traduit en clic secondaire par le
+             système, donc un événement contextmenu est émis et le menu natif
+             tuerait le glissement. js/app.js neutralise le menu contextuel
+             UNIQUEMENT le temps d'un glissement déclenché au Ctrl (garde posé
+             au pointerdown, retiré à la fin du geste) : hors glissement, le
+             menu natif reste disponible partout dans la page.
              Le cadran ne s'aplatit PAS pour visualiser le pitch (pas de
              rotateX) : à 85-90° le disque se réduirait à une ligne, or c'est
              lui qu'on doit attraper à la souris. L'inclinaison est lue en clair
@@ -166,13 +175,13 @@
           class="heading-compass"
           role="slider"
           tabindex="0"
-          aria-label="Orientation de la caméra (cap) ; Maj + glisser ou flèches haut/bas pour l'inclinaison"
+          aria-label="Orientation de la caméra (cap) ; Maj ou Ctrl + glisser, ou flèches haut/bas, pour l'inclinaison"
           aria-valuemin="0"
           aria-valuemax="360"
           aria-valuenow="0"
           aria-valuetext="0 degrés, N"
           aria-describedby="nav-hint"
-          title="Glisser : cap sur 360° · Maj + glisser : inclinaison 0-90° · flèches gauche/droite : cap, haut/bas : inclinaison (±5° avec Maj) · double-clic : nord"
+          title="Glisser : cap sur 360° · Maj ou Ctrl + glisser : inclinaison 0-90° · flèches gauche/droite : cap, haut/bas : inclinaison (±5° avec Maj) · double-clic : nord"
         >
           <svg class="hc-dial" viewBox="-50 -50 100 100" aria-hidden="true" focusable="false">
             <circle class="hc-face" cx="0" cy="0" r="40" />
@@ -220,8 +229,8 @@
           </svg>
           <span id="hc-value" class="hc-value">0° N</span>
           <!-- Lecture de l'inclinaison courante (pitch), seconde ligne sous le
-               cap. Mise à jour pendant le glissement Maj + souris ET par la
-               synchronisation retour depuis la caméra. -->
+               cap. Mise à jour pendant le glissement Maj/Ctrl + souris ET par
+               la synchronisation retour depuis la caméra. -->
           <span id="hc-pitch" class="hc-pitch">incl. 62°</span>
         </div>
         <!-- Aide-mémoire discret des interactions de navigation 3D. Référencé
@@ -229,8 +238,8 @@
              décrit le geste d'inclinaison aux lecteurs d'écran. -->
         <p id="nav-hint" class="nav-hint">
           Clic-glisser : déplacer · Ctrl/clic-droit-glisser : pivoter/incliner ·
-          molette : zoom · cadran ci-dessus : cap sur 360° · Maj + glisser le
-          cadran : inclinaison 0-90°
+          molette : zoom · cadran ci-dessus : cap sur 360° · Maj ou Ctrl +
+          glisser le cadran : inclinaison 0-90°
         </p>
       </div>
 

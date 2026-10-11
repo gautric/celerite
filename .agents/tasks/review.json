@@ -1,36 +1,5 @@
 {
-  "verdict": "APPROVED",
-  "findings": [
-    {
-      "label": "Inclinaison non exposée au modèle ARIA",
-      "confidence": "likely",
-      "blocking": false,
-      "detail": "Le cadran reste un role=\"slider\" dont aria-valuenow / aria-valuetext ne portent que le cap, et les enfants d'un slider sont présentationnels : le texte « incl. X° » n'est pas restitué. Flèche haut/bas modifie donc une valeur muette. Envisager role=\"group\" avec deux sliders, ou injecter l'inclinaison dans aria-valuetext / une zone aria-live. Aucune restitution par lecteur d'écran n'a été écoutée (évidence § 6)."
-    },
-    {
-      "label": "Sens du geste contraire à une lecture du brief",
-      "confidence": "confirmed",
-      "blocking": false,
-      "detail": "Monter le pointeur incline, par cohérence avec pitchDegreesPerPixelMoved = -0,5 du gestionnaire natif MapLibre, là où le brief évoquait « glisser vers le bas incline ». Arbitrage assumé et documenté (plan D2, README, message de commit) ; à confirmer par le demandeur, l'inversion ne coûtant qu'un changement de signe sur PITCH_DEG_PER_PIXEL."
-    },
-    {
-      "label": "Mode inclinaison inatteignable en tactile",
-      "confidence": "confirmed",
-      "blocking": false,
-      "detail": "ev.shiftKey est le seul déclencheur du mode pitch et l'aide-mémoire visible ne mentionne que « Maj + glisser le cadran ». Prévoir un repli au doigt (appui long, double-pointeur) ou mentionner le geste natif touchPitch dans l'aide."
-    },
-    {
-      "label": "Valeur initiale « incl. 62° » codée en dur dans le HTML",
-      "confidence": "confirmed",
-      "blocking": false,
-      "detail": "index.html duplique le pitch: 62 de js/scene3d.js ; la ligne reste fausse si la valeur par défaut change ou tant que le câblage n'a pas émis. Laisser un gabarit neutre (incl. —°) ou aligner les deux sources."
-    },
-    {
-      "label": "Position de l'aide-mémoire couplée au nombre de lignes du cadran",
-      "confidence": "confirmed",
-      "blocking": false,
-      "detail": ".nav-hint { top } passe de 124 à 138 px en dur pour absorber #hc-pitch ; toute troisième ligne de lecture rouvrira le même ajustement manuel. Un flux normal sous le cadran supprimerait ce réglage."
-    }
-  ],
-  "reviewDoc": "/Users/gautric/Source/divers/laser/.worktrees/pitch-souris-shift/.agents/tasks/review.md"
+  "verdict": "PENDING",
+  "findings": [],
+  "note": "Fichier réinitialisé par l'étape de planification de la tâche « inclinaison au Ctrl + glisser ». Le verdict APPROVED qu'il contenait appartenait à la tâche PRÉCÉDENTE (Maj + glisser) et aurait pu satisfaire à tort la condition d'arrêt de la boucle de construction. Le relecteur de la présente tâche doit réécrire ce fichier avec « verdict » = « APPROVED » ou « CHANGES_REQUESTED »."
 }
