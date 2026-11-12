@@ -32,11 +32,12 @@ au sommet le plus haut à cet endroit (sol + bâtiment) et on en déduit le
 - **MapLibre GL JS 5.12.0** — fond de carte OSM raster, **terrain 3D** (DEM),
   ombrage (hillshade), bâtiments en **extrusion** (`fill-extrusion`), pitch/bearing.
 - **deck.gl 9.4.0** (`MapLibreOverlay` en mode **interleaved**) — **le faisceau**
-  est une `LineLayer` dont les coordonnées portent une **altitude z absolue en
-  mètres**. Le mode interleaved partage le contexte WebGL2 et le *depth buffer*
-  de MapLibre : le faisceau est donc **testé en profondeur** et réellement
-  **masqué** par le terrain et les bâtiments plus hauts que lui. Ce n'est **pas**
-  une ligne drapée sur le sol.
+  est un **cylindre 3D** (`SimpleMeshLayer` + `CylinderGeometry` de luma.gl)
+  dont les extrémités sont à l'**altitude absolue en mètres**. Le mode
+  interleaved partage le contexte WebGL2 et le *depth buffer* de MapLibre : le
+  faisceau est donc **testé en profondeur** et réellement **masqué** par le
+  terrain et les bâtiments plus hauts que lui. Ce n'est **pas** une ligne
+  drapée sur le sol.
 - **Chart.js 4.4.4** — profil en coupe 2D (altitude vs distance).
 
 Pourquoi ce choix et **aucun token** : MapLibre + deck.gl + Chart.js sont libres

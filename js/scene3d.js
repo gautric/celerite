@@ -1,22 +1,47 @@
 // scene3d.js — Scène 3D géospatiale (MapLibre GL JS + deck.gl).
 //  - MapLibre : fond OSM raster, terrain 3D (DEM Terrarium), ombrage, bâtiments
 //    en extrusion (fill-extrusion), pitch/bearing.
-//  - deck.gl (MapLibreOverlay interleaved) : LE FAISCEAU est un vrai segment 3D
-//    dont les coordonnées portent une altitude z ABSOLUE en mètres. En mode
-//    "interleaved" deck.gl partage le contexte WebGL2 et le depth buffer de
-//    MapLibre : le faisceau est donc testé en profondeur (depthTest) contre le
-//    terrain ET les bâtiments. Un obstacle plus haut que le faisceau le masque
-//    réellement à l'écran (ce n'est PAS une ligne drapée sur le sol).
+//  - deck.gl (MapLibreOverlay interleaved) : LE FAISCEAU est un cylindre 3D
+//    (SimpleMeshLayer + CylinderGeometry de luma.gl) dont les extrémités sont à
+//    l'altitude ABSOLUE en mètres. En mode "interleaved" deck.gl partage le
+//    contexte WebGL2 et le depth buffer de MapLibre : le faisceau est donc testé
+//    en profondeur (depthTest) contre le terrain ET les bâtiments. Un obstacle
+//    plus haut que le faisceau le masque réellement à l'écran (ce n'est PAS une
+//    ligne drapée sur le sol).
 //
 // Les globals maplibregl / deck sont fournis par les scripts CDN (voir index.html).
+// CylinderGeometry (luma.gl, moteur de deck.gl) est importée en module ES via
+// l'import map de index.html : le bundle deck.gl ne l'expose pas.
 
+import { CylinderGeometry } from "@luma.gl/engine/cylinder-geometry";
 import {
   TILES,
   COLORS,
   DEFAULT_EXAGGERATION,
   SITE_A,
   SITE_B,
+  BEAM_WIDTH_PX,
+  BEAM_SEGMENTS,
 } from "./config.js";
+
+// Circonférence équatoriale de la Terre en Web Mercator (m).
+const EARTH_CIRCUMFERENCE = 40075016.686;
+
+// Cylindre unitaire du faisceau (rayon 1 m, longueur 1 m, axe X, centré,
+// fermé aux deux bouts). Longueur, rayon et orientation sont appliqués par
+// SimpleMeshLayer (getScale / getOrientation), sans reconstruire le maillage.
+// On ne passe que les données (attributs + index) : SimpleMeshLayer reconstruit
+// sa propre Geometry, indépendamment du module luma.gl importé ici.
+const { attributes: beamAttributes, indices: beamIndices } = new CylinderGeometry({
+  radius: 1,
+  height: 1,
+  nradial: BEAM_SEGMENTS,
+  nvertical: 1,
+  verticalAxis: "x",
+  topCap: true,
+  bottomCap: true,
+});
+const BEAM_MESH = { attributes: beamAttributes, indices: beamIndices };
 
 // Normalise un cap (degrés) dans [0, 360). Tolère les valeurs négatives et
 // les tours accumulés : c'est ce qui permet une rotation continue sur 360°
@@ -202,6 +227,8 @@ export class Scene3D {
         const Overlay = deck.MapLibreOverlay || deck.MapboxOverlay;
         this.overlay = new Overlay({ interleaved: true, layers: [] });
         this.map.addControl(this.overlay);
+        // Le rayon du cylindre suit le zoom (diamètre apparent constant).
+        this.map.on("zoom", () => this._refreshLayers());
         this._refreshLayers();
         resolve();
       });
@@ -443,6 +470,18 @@ export class Scene3D {
     this._refreshLayers();
   }
 
+  /**
+   * Rayon du cylindre en mètres tel que son diamètre apparent vaille
+   * BEAM_WIDTH_PX au centre de la vue (tuiles MapLibre de 512 px).
+   */
+  _beamRadiusMeters() {
+    const zoom = this.map ? this.map.getZoom() : 12;
+    const lat = this.map ? this.map.getCenter().lat : SITE_A.lat;
+    const metersPerPixel =
+      (EARTH_CIRCUMFERENCE * Math.cos((lat * Math.PI) / 180)) / (512 * 2 ** zoom);
+    return (BEAM_WIDTH_PX / 2) * metersPerPixel;
+  }
+
   /** (Re)construit les couches deck.gl. */
   _refreshLayers() {
     if (!this.overlay) return;
@@ -491,26 +530,41 @@ export class Scene3D {
       // repères de position/altitude des deux sites.)
     }
 
-    // LE FAISCEAU : LineLayer dont les positions portent z (altitude en m).
-    // parameters.depthTest:true + overlay interleaved => occlusion correcte
-    // par le terrain et les bâtiments (un obstacle plus haut masque le trait).
+    // LE FAISCEAU : cylindre unitaire (BEAM_MESH) ancré au milieu de A-B,
+    // étiré à la longueur A-B et orienté de A vers B par deck.gl. Les sommets
+    // d'un SimpleMeshLayer sont en mètres (x est, y nord, z haut) autour de
+    // getPosition. depthTest:true + overlay interleaved => occlusion correcte
+    // par le terrain et les bâtiments.
     if (this._beam && this._beamVisible) {
       // Extrémités mises à l'échelle de l'exagération (z * ex) pour rester
       // ancrées à la surface exagérée ; les z vrais ne sont pas modifiés.
-      const beamScaled = {
-        source: [this._beam.source[0], this._beam.source[1], this._beam.source[2] * ex],
-        target: [this._beam.target[0], this._beam.target[1], this._beam.target[2] * ex],
-        blocked: this._beam.blocked,
-      };
+      const [lonA, latA, zA] = this._beam.source;
+      const [lonB, latB, zB] = this._beam.target;
+      const mid = [(lonA + lonB) / 2, (latA + latB) / 2, ((zA + zB) / 2) * ex];
+      // Vecteur A -> B en mètres dans le plan tangent au milieu (même échelle
+      // locale que deck.gl autour de getPosition).
+      const metersPerDeg = EARTH_CIRCUMFERENCE / 360;
+      const dx = (lonB - lonA) * metersPerDeg * Math.cos((mid[1] * Math.PI) / 180);
+      const dy = (latB - latA) * metersPerDeg;
+      const dz = (zB - zA) * ex;
+      const horizontal = Math.hypot(dx, dy);
+      const toDeg = 180 / Math.PI;
+      // Orientation deck.gl [pitch, yaw, roll] en degrés : yaw tourne l'axe X
+      // du cylindre vers B dans le plan horizontal, pitch (négatif = vers le
+      // haut) l'incline selon la pente du faisceau.
+      const orientation = [-Math.atan2(dz, horizontal) * toDeg, Math.atan2(dy, dx) * toDeg, 0];
+      const r = this._beamRadiusMeters();
       layers.push(
-        new deck.LineLayer({
+        new deck.SimpleMeshLayer({
           id: "laser-beam",
-          data: [beamScaled],
-          getSourcePosition: (d) => d.source, // [lon, lat, altitude_m * ex]
-          getTargetPosition: (d) => d.target, // [lon, lat, altitude_m * ex]
+          data: [{ position: mid, blocked: this._beam.blocked }],
+          mesh: BEAM_MESH,
+          getPosition: (d) => d.position, // [lon, lat, altitude_m * ex] du milieu
           getColor: (d) => (d.blocked ? COLORS.beamBlocked : COLORS.beamClear),
-          getWidth: 5,
-          widthUnits: "pixels",
+          getOrientation: orientation,
+          getScale: [Math.hypot(horizontal, dz), r, r],
+          // Éclairage doux : le volume du cylindre se lit sans éteindre le néon.
+          material: { ambient: 0.6, diffuse: 0.5, shininess: 32, specularColor: [255, 255, 255] },
           parameters: { depthTest: true },
         })
       );

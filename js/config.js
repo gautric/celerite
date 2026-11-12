@@ -78,6 +78,14 @@ export const TILES = {
 // Exagération verticale initiale du terrain 3D.
 export const DEFAULT_EXAGGERATION = 1.5;
 
+// --- Faisceau 3D (cylindre deck.gl) ---
+// Diamètre APPARENT du cylindre, en pixels, au centre de la vue : le rayon en
+// mètres est recalculé à chaque zoom pour que le faisceau reste visible quelle
+// que soit l'échelle (VISUEL UNIQUEMENT, sans effet sur la ligne de visée).
+export const BEAM_WIDTH_PX = 6;
+// Nombre de facettes autour de l'axe du cylindre.
+export const BEAM_SEGMENTS = 32;
+
 // --- Couleurs (deck.gl attend du RGBA 0-255) ---
 export const COLORS = {
   buildingDefault: "#8aa0b4",

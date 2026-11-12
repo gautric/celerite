@@ -111,6 +111,15 @@
     <script src="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.js"></script>
     <!-- deck.gl (faisceau 3D à altitude vraie, occlusion par profondeur) -->
     <script src="https://unpkg.com/deck.gl@9.4.0/dist.min.js"></script>
+    <!-- CylinderGeometry de luma.gl (moteur de deck.gl), absente du bundle
+         deck.gl : maillage du faisceau. Même version que le luma.gl de deck.gl. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@luma.gl/engine/cylinder-geometry": "https://esm.sh/@luma.gl/engine@9.4.0/dist/geometries/cylinder-geometry.js?deps=@luma.gl/core@9.4.0"
+        }
+      }
+    </script>
     <!-- Chart.js (profil en coupe 2D) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 
