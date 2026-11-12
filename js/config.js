@@ -51,6 +51,15 @@ export const ENDPOINTS = {
   openElevation: "https://api.open-elevation.com/api/v1/lookup",
 };
 
+// Données pré-chargées servies avec le site (chemins relatifs à la racine).
+// Générées par `make data` (scripts/build-data.mjs). Si un fichier manque ou
+// ne correspond plus au scénario (sites, rayon, échantillonnage), l'application
+// revient aux services en ligne ci-dessus.
+export const LOCAL_DATA = {
+  buildings: "data/buildings.json",
+  elevation: "data/elevation.json",
+};
+
 // User-Agent requis par Overpass (sinon HTTP 406).
 export const USER_AGENT = "laser-los-experiment/1.0";
 

@@ -1,7 +1,10 @@
 // data.js — Récupération des données externes (sans clé API) :
 //  - Bâtiments + hauteurs via OSM Overpass (POST).
 //  - Profil d'élévation du sol via IGN Géoplateforme (GET, repli Open-Elevation).
-// Toutes les données sont mises en cache en mémoire.
+// Les deux jeux de données sont d'abord lus dans des fichiers pré-chargés
+// servis avec le site (data/*.json, générés par `make data`) ; les services en
+// ligne ne sont appelés qu'en repli. Toutes les données sont mises en cache en
+// mémoire.
 
 import {
   ENDPOINTS,
@@ -12,11 +15,44 @@ import {
   DEFAULT_BUILDING_HEIGHT,
   METERS_PER_LEVEL,
   IGN_CHUNK,
+  LOCAL_DATA,
 } from "./config.js";
 
 // --- Cache mémoire ---
 let _buildingsCache = null;
 let _elevationCache = new Map(); // clé = signature des points -> z[]
+
+// --- Fichiers pré-chargés (data/*.json) ---
+
+/**
+ * Paramètres qui déterminent le contenu du fichier de bâtiments. Le fichier
+ * n'est utilisé que s'il a été généré avec exactement ces valeurs.
+ */
+export function buildingsParams() {
+  return {
+    radius: CORRIDOR_RADIUS,
+    a: [SITE_A.lat, SITE_A.lon],
+    b: [SITE_B.lat, SITE_B.lon],
+  };
+}
+
+/** Signature d'une liste de points {lon,lat} (clé du cache d'élévation). */
+export function pointsKey(points) {
+  return points.map((p) => `${p.lon.toFixed(5)},${p.lat.toFixed(5)}`).join(";");
+}
+
+/** Lit un fichier JSON servi avec le site (chemin relatif à la racine). */
+async function loadLocalJSON(relPath) {
+  const res = await fetch(new URL(`../${relPath}`, import.meta.url));
+  if (!res.ok) throw new Error(`${relPath} : HTTP ${res.status}`);
+  return res.json();
+}
+
+/** Date courte (jj/mm/aaaa) d'un horodatage ISO, ou "" si absent. */
+function shortDate(iso) {
+  const d = iso ? new Date(iso) : null;
+  return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString("fr-FR") : "";
+}
 
 /**
  * Analyse robuste d'une valeur de hauteur OSM.
@@ -121,12 +157,40 @@ export function overpassToGeoJSON(osm) {
 }
 
 /**
- * Récupère les bâtiments du corridor via Overpass.
- * User-Agent obligatoire. Réessaie une fois, puis bascule sur le miroir kumi.
+ * Récupère les bâtiments du corridor : fichier pré-chargé d'abord, Overpass en
+ * repli si le fichier est absent, invalide ou généré pour un autre corridor.
  * @param {(msg:string)=>void} onStatus callback d'état (chargement).
  */
 export async function fetchBuildings(onStatus = () => {}) {
   if (_buildingsCache) return _buildingsCache;
+  try {
+    onStatus("Chargement des bâtiments (fichier local)…");
+    const fc = await loadLocalJSON(LOCAL_DATA.buildings);
+    if (!fc || !Array.isArray(fc.features)) throw new Error("format invalide");
+    const params = fc.meta && fc.meta.params;
+    if (JSON.stringify(params) !== JSON.stringify(buildingsParams())) {
+      throw new Error("généré pour un autre corridor");
+    }
+    _buildingsCache = fc;
+    const date = shortDate(fc.meta.osmTimestamp);
+    onStatus(
+      `Bâtiments chargés (fichier local${date ? ` du ${date}` : ""}) : ${fc.features.length}.`
+    );
+    return fc;
+  } catch (err) {
+    console.warn(`Bâtiments : fichier local ignoré (${err.message}), repli Overpass.`);
+  }
+  _buildingsCache = await fetchBuildingsFromOverpass(onStatus);
+  return _buildingsCache;
+}
+
+/**
+ * Récupère les bâtiments du corridor via Overpass.
+ * User-Agent obligatoire. Réessaie une fois, puis bascule sur le miroir kumi.
+ * L'horodatage OSM de la réponse est conservé dans fc.meta.osmTimestamp.
+ * @param {(msg:string)=>void} onStatus callback d'état (chargement).
+ */
+export async function fetchBuildingsFromOverpass(onStatus = () => {}) {
   const query = buildOverpassQuery();
   const body = new URLSearchParams({ data: query }).toString();
   const targets = [ENDPOINTS.overpass, ENDPOINTS.overpass, ENDPOINTS.overpassMirror];
@@ -151,7 +215,7 @@ export async function fetchBuildings(onStatus = () => {}) {
       if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
       const json = await res.json();
       const fc = overpassToGeoJSON(json);
-      _buildingsCache = fc;
+      fc.meta = { osmTimestamp: (json.osm3s && json.osm3s.timestamp_osm_base) || null };
       onStatus(`Bâtiments chargés : ${fc.features.length}.`);
       return fc;
     } catch (err) {
@@ -239,14 +303,40 @@ async function fetchOpenElevation(points) {
 }
 
 /**
- * Récupère le profil d'élévation du sol pour une liste de points {lon,lat}.
- * IGN en priorité (découpage ≤200 pts), repli Open-Elevation.
- * Les valeurs no-data sont corrigées par interpolation. Mise en cache mémoire.
+ * Récupère le profil d'élévation du sol pour une liste de points {lon,lat} :
+ * fichier pré-chargé d'abord (s'il a été généré pour exactement ces points),
+ * services en ligne en repli. Mise en cache mémoire.
  */
 export async function fetchElevations(points, onStatus = () => {}) {
-  const key = points.map((p) => `${p.lon.toFixed(5)},${p.lat.toFixed(5)}`).join(";");
+  const key = pointsKey(points);
   if (_elevationCache.has(key)) return _elevationCache.get(key);
 
+  let zs = null;
+  try {
+    onStatus("Chargement du profil d'élévation (fichier local)…");
+    const file = await loadLocalJSON(LOCAL_DATA.elevation);
+    if (!file || !Array.isArray(file.z) || file.z.length !== points.length) {
+      throw new Error("format invalide");
+    }
+    if (!file.meta || file.meta.key !== key) {
+      throw new Error("généré pour d'autres points");
+    }
+    zs = file.z;
+    onStatus(`Profil d'élévation chargé (fichier local, ${zs.length} points).`);
+  } catch (err) {
+    console.warn(`Élévation : fichier local ignoré (${err.message}), repli IGN.`);
+  }
+  if (!zs) zs = await fetchElevationsFromNetwork(points, onStatus);
+  _elevationCache.set(key, zs);
+  return zs;
+}
+
+/**
+ * Récupère le profil d'élévation via les services en ligne.
+ * IGN en priorité (découpage ≤200 pts), repli Open-Elevation.
+ * Les valeurs no-data sont corrigées par interpolation.
+ */
+export async function fetchElevationsFromNetwork(points, onStatus = () => {}) {
   let zs;
   try {
     onStatus("Chargement du profil d'élévation (IGN)…");
@@ -268,7 +358,6 @@ export async function fetchElevations(points, onStatus = () => {}) {
     }
   }
   zs = fillNoData(zs);
-  _elevationCache.set(key, zs);
   onStatus(`Profil d'élévation chargé (${zs.length} points).`);
   return zs;
 }

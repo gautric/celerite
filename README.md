@@ -48,8 +48,8 @@ services IGN / Overpass sont tous accessibles sans clé et compatibles CORS. On
 
 | Donnée                 | Source                                                                 | Accès |
 | ---------------------- | ---------------------------------------------------------------------- | ----- |
-| Bâtiments + hauteurs   | **OpenStreetMap / Overpass API** (`overpass-api.de`, miroir kumi)      | POST, User-Agent requis |
-| Profil d'élévation sol | **IGN Géoplateforme — RGE ALTI** (`data.geopf.fr/altimetrie`)          | GET (repli Open-Elevation) |
+| Bâtiments + hauteurs   | **OpenStreetMap / Overpass API** (`overpass-api.de`, miroir kumi)      | pré-chargé dans `data/buildings.json` ; repli POST, User-Agent requis |
+| Profil d'élévation sol | **IGN Géoplateforme — RGE ALTI** (`data.geopf.fr/altimetrie`)          | pré-chargé dans `data/elevation.json` ; repli GET (puis Open-Elevation) |
 | Terrain 3D (relief)    | **DEM Terrarium — AWS Open Data** (`elevation-tiles-prod`)             | tuiles PNG |
 | Fond de carte          | **OpenStreetMap** tuiles raster                                        | tuiles PNG |
 
@@ -72,8 +72,9 @@ python3 -m http.server 8000
 
 Puis ouvrez **http://localhost:8000**.
 
-Au chargement : la scène 3D s'initialise, les bâtiments (Overpass) et le profil
-d'élévation (IGN) sont récupérés en parallèle (indicateurs de chargement et
+Au chargement : la scène 3D s'initialise, les bâtiments et le profil
+d'élévation sont lus en parallèle dans les fichiers pré-chargés `data/*.json`
+(voir « Données pré-chargées » ci-dessous ; Overpass et IGN en repli) (indicateurs de chargement et
 messages d'erreur clairs si un service est indisponible), l'altitude récepteur
 par défaut est calculée, puis la ligne de visée est analysée et affichée.
 
@@ -119,9 +120,19 @@ par défaut est calculée, puis la ligne de visée est analysée et affichée.
 - **Hauteur de bâtiment** rapportée au sol IGN de l'échantillon le plus proche
   (approximation ; le verdict numérique vient du calcul LOS, la 3D est la
   visualisation).
-- **Volume réseau** : une seule requête Overpass (corridor 300 m, ~11 000
-  bâtiments, ~10,7 Mo) et un appel IGN (200 points) — tout est mis en cache en
-  mémoire ; le bouton « Recalculer » n'émet aucun nouvel appel.
+- **Volume réseau** : deux fichiers servis avec le site, `data/buildings.json`
+  (~10 700 bâtiments, 3,9 Mo, ~0,6 Mo compressé en gzip) et `data/elevation.json`
+  (200 points, 5 Ko), au lieu d'une requête Overpass de ~10,7 Mo et d'un appel
+  IGN. Tout est mis en cache en mémoire ; le bouton « Recalculer » n'émet aucun
+  nouvel appel.
+- **Données pré-chargées** : générées par `make data` (`scripts/build-data.mjs`),
+  qui réutilise la requête et la conversion de `js/data.js`. Les bâtiments sont
+  donc figés à la date OSM indiquée dans le message de chargement : relancer
+  `make data` pour les rafraîchir, puis committer `data/*.json`. Coordonnées
+  arrondies à 6 décimales (~0,1 m). Chaque fichier enregistre les paramètres
+  qui l'ont produit (sites A/B, rayon du corridor, points échantillonnés) :
+  si `js/config.js` change, l'application ignore le fichier périmé et revient
+  à Overpass / IGN jusqu'à la prochaine génération.
 - **Borne d'inclinaison 0°–90°** : plage réellement permise par MapLibre GL JS
   5.12.0, vérifiée dans le bundle — `setMaxPitch` ne refuse qu'une valeur
   **supérieure à 180** (« maxPitch must be less than or equal to 180 ») ou
@@ -167,7 +178,10 @@ css/style.css        mise en page (3D plein cadre + panneaux)
 assets/              carte sociale (SVG source + PNG 1200x630) et favicon
 js/config.js         constantes du scénario, endpoints, couleurs
 js/geo.js            haversine, azimut, interpolation, point-dans-polygone
-js/data.js           Overpass (bâtiments) + IGN/Open-Elevation (profil)
+js/data.js           fichiers data/*.json, sinon Overpass + IGN/Open-Elevation
+data/buildings.json  bâtiments pré-chargés du corridor (make data)
+data/elevation.json  profil d'élévation pré-chargé (make data)
+scripts/build-data.mjs  génération des fichiers data/*.json
 js/los.js            analyse de la ligne de visée
 js/scene3d.js        MapLibre (terrain, bâtiments) + deck.gl (faisceau 3D)
 js/chart2d.js        profil en coupe 2D (Chart.js)

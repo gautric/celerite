@@ -7,7 +7,7 @@ URL  := http://localhost:$(PORT)
 
 .DEFAULT_GOAL := serve
 
-.PHONY: serve start open stop social help
+.PHONY: serve start open stop data social help
 
 ## serve : lance le serveur statique Node sur $(PORT) (Ctrl+C pour arrêter)
 serve:
@@ -28,6 +28,10 @@ stop:
 	@pid=$$(lsof -ti tcp:$(PORT)); \
 	if [ -n "$$pid" ]; then kill $$pid && echo "Serveur arrêté (port $(PORT))"; \
 	else echo "Aucun serveur sur le port $(PORT)"; fi
+
+## data : pré-charge bâtiments (Overpass) + profil d'élévation (IGN) dans data/*.json
+data:
+	node scripts/build-data.mjs
 
 ## social : régénère l'image d'aperçu social 1200x630 (PNG) depuis le SVG
 social:
