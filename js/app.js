@@ -11,6 +11,7 @@ import {
   N_SAMPLES,
   DOME_HEIGHT,
   DEFAULT_EXAGGERATION,
+  VERDICT_LABEL,
 } from "./config.js";
 import { haversine, bearing, interpolatePath } from "./geo.js";
 import { fetchBuildings, fetchElevations } from "./data.js";
@@ -34,6 +35,7 @@ const state = {
   azimuth: 0,
   altA: SITE_A.altitude + SITE_A.base, // émission = terrasse + socle
   altB: null, // altitude récepteur (éditable)
+  hintAltBBase: null, // libellé de détail de l'altitude récepteur (calculé au boot)
   // Hauteurs PHYSIQUES ajoutées à chaque extrémité du faisceau (m). Elles
   // modifient réellement la géométrie du faisceau (ce n'est PAS un effet
   // visuel) : altitudes effectives = base + hauteur ajoutée, injectées dans le
@@ -93,7 +95,8 @@ function renderResults() {
   if (los) {
     $("res-clearance").textContent = `${fmt(los.minClearance, 1)} m`;
     const v = $("res-verdict");
-    v.textContent = los.verdict;
+    // Libellé francophone (jamais la valeur logique anglaise brute).
+    v.textContent = VERDICT_LABEL[los.verdict] ?? los.verdict;
     v.className = "verdict " + (los.verdict === "CLEAR" ? "clear" : "blocked");
   }
 }
@@ -122,7 +125,7 @@ function recompute() {
   state.scene.setBeam(effAltA, effAltB, blocked);
   state.scene.markObstructing(los.obstructingBuildingIds);
   state.scene.setObstructions(
-    los.obstructions.map((o) => ({ lon: o.lon, lat: o.lat, top: o.top }))
+    los.obstructions.map((o) => ({ lon: o.lon, lat: o.lat, top: o.top })),
   );
 
   renderProfile(los.series, los, $("chart"));
@@ -505,7 +508,11 @@ function wireHeadingCompass() {
     dragMode = null;
     dial.classList.remove("is-dragging");
     dial.classList.remove("is-pitching");
-    if (ev && ev.pointerId !== undefined && dial.hasPointerCapture(ev.pointerId)) {
+    if (
+      ev &&
+      ev.pointerId !== undefined &&
+      dial.hasPointerCapture(ev.pointerId)
+    ) {
       dial.releasePointerCapture(ev.pointerId);
     }
   };

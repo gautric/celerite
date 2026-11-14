@@ -32,15 +32,16 @@ const EARTH_CIRCUMFERENCE = 40075016.686;
 // SimpleMeshLayer (getScale / getOrientation), sans reconstruire le maillage.
 // On ne passe que les données (attributs + index) : SimpleMeshLayer reconstruit
 // sa propre Geometry, indépendamment du module luma.gl importé ici.
-const { attributes: beamAttributes, indices: beamIndices } = new CylinderGeometry({
-  radius: 1,
-  height: 1,
-  nradial: BEAM_SEGMENTS,
-  nvertical: 1,
-  verticalAxis: "x",
-  topCap: true,
-  bottomCap: true,
-});
+const { attributes: beamAttributes, indices: beamIndices } =
+  new CylinderGeometry({
+    radius: 1,
+    height: 1,
+    nradial: BEAM_SEGMENTS,
+    nvertical: 1,
+    verticalAxis: "x",
+    topCap: true,
+    bottomCap: true,
+  });
 const BEAM_MESH = { attributes: beamAttributes, indices: beamIndices };
 
 // Normalise un cap (degrés) dans [0, 360). Tolère les valeurs négatives et
@@ -76,16 +77,6 @@ const PITCH_MAX = 90;
 function clampPitch(p) {
   if (!Number.isFinite(p)) return PITCH_MIN;
   return Math.min(PITCH_MAX, Math.max(PITCH_MIN, p));
-}
-
-// Convertit "#rrggbb" -> [r,g,b].
-function hexToRgb(hex) {
-  const h = hex.replace("#", "");
-  return [
-    parseInt(h.slice(0, 2), 16),
-    parseInt(h.slice(2, 4), 16),
-    parseInt(h.slice(4, 6), 16),
-  ];
 }
 
 export class Scene3D {
@@ -208,13 +199,12 @@ export class Scene3D {
         showZoom: true,
         visualizePitch: true,
       }),
-      "top-right"
+      "top-right",
     );
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       this.map.on("error", (e) => {
         // On ne rejette pas sur les erreurs de tuiles isolées, seulement on log.
-        // eslint-disable-next-line no-console
         console.warn("MapLibre:", e && e.error ? e.error.message : e);
       });
       this.map.on("load", () => {
@@ -295,7 +285,7 @@ export class Scene3D {
       this.map.setPaintProperty(
         "buildings-3d",
         "fill-extrusion-height",
-        this._buildingHeightExpr()
+        this._buildingHeightExpr(),
       );
     }
   }
@@ -348,7 +338,7 @@ export class Scene3D {
       this.map.setLayoutProperty(
         "buildings-3d",
         "visibility",
-        visible ? "visible" : "none"
+        visible ? "visible" : "none",
       );
     }
   }
@@ -432,13 +422,15 @@ export class Scene3D {
   setTerrainVisible(visible) {
     if (!this.map) return;
     this.map.setTerrain(
-      visible ? { source: "terrain-dem", exaggeration: this._exaggeration } : null
+      visible
+        ? { source: "terrain-dem", exaggeration: this._exaggeration }
+        : null,
     );
     if (this.map.getLayer("hillshade")) {
       this.map.setLayoutProperty(
         "hillshade",
         "visibility",
-        visible ? "visible" : "none"
+        visible ? "visible" : "none",
       );
     }
   }
@@ -478,7 +470,8 @@ export class Scene3D {
     const zoom = this.map ? this.map.getZoom() : 12;
     const lat = this.map ? this.map.getCenter().lat : SITE_A.lat;
     const metersPerPixel =
-      (EARTH_CIRCUMFERENCE * Math.cos((lat * Math.PI) / 180)) / (512 * 2 ** zoom);
+      (EARTH_CIRCUMFERENCE * Math.cos((lat * Math.PI) / 180)) /
+      (512 * 2 ** zoom);
     return (BEAM_WIDTH_PX / 2) * metersPerPixel;
   }
 
@@ -523,7 +516,7 @@ export class Scene3D {
           getWidth: 6,
           widthUnits: "pixels",
           parameters: { depthTest: true },
-        })
+        }),
       );
       // (Les disques des sites A/B — ScatterplotLayer "site-markers" — ont été
       // retirés à la demande. Les colonnes verticales ci-dessus restent comme
@@ -544,7 +537,8 @@ export class Scene3D {
       // Vecteur A -> B en mètres dans le plan tangent au milieu (même échelle
       // locale que deck.gl autour de getPosition).
       const metersPerDeg = EARTH_CIRCUMFERENCE / 360;
-      const dx = (lonB - lonA) * metersPerDeg * Math.cos((mid[1] * Math.PI) / 180);
+      const dx =
+        (lonB - lonA) * metersPerDeg * Math.cos((mid[1] * Math.PI) / 180);
       const dy = (latB - latA) * metersPerDeg;
       const dz = (zB - zA) * ex;
       const horizontal = Math.hypot(dx, dy);
@@ -552,7 +546,11 @@ export class Scene3D {
       // Orientation deck.gl [pitch, yaw, roll] en degrés : yaw tourne l'axe X
       // du cylindre vers B dans le plan horizontal, pitch (négatif = vers le
       // haut) l'incline selon la pente du faisceau.
-      const orientation = [-Math.atan2(dz, horizontal) * toDeg, Math.atan2(dy, dx) * toDeg, 0];
+      const orientation = [
+        -Math.atan2(dz, horizontal) * toDeg,
+        Math.atan2(dy, dx) * toDeg,
+        0,
+      ];
       const r = this._beamRadiusMeters();
       layers.push(
         new deck.SimpleMeshLayer({
@@ -564,9 +562,14 @@ export class Scene3D {
           getOrientation: orientation,
           getScale: [Math.hypot(horizontal, dz), r, r],
           // Éclairage doux : le volume du cylindre se lit sans éteindre le néon.
-          material: { ambient: 0.6, diffuse: 0.5, shininess: 32, specularColor: [255, 255, 255] },
+          material: {
+            ambient: 0.6,
+            diffuse: 0.5,
+            shininess: 32,
+            specularColor: [255, 255, 255],
+          },
           parameters: { depthTest: true },
-        })
+        }),
       );
     }
 
@@ -579,4 +582,4 @@ export class Scene3D {
   }
 }
 
-export { hexToRgb, normalizeBearing, clampPitch, PITCH_MIN, PITCH_MAX };
+export { normalizeBearing, clampPitch, PITCH_MIN, PITCH_MAX };

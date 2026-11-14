@@ -10,3 +10,6 @@
 *.log
 /tmp/
 node_modules/
+
+# Dumps Overpass bruts (intermédiaires) : non servis par l'app, régénérables.
+data/*.overpass.json

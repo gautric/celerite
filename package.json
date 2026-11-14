@@ -1,0 +1,32 @@
+{
+  "name": "laser-los-experiment",
+  "version": "1.0.0",
+  "description": "Visualisation 3D géospatiale d'une ligne de visée (tir laser) entre l'Observatoire de Meudon et la Coupole Arago de l'Observatoire de Paris.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "author": "Guillaume Autric",
+  "homepage": "https://celerite.autric.net/",
+  "scripts": {
+    "serve": "node server.js",
+    "start": "node server.js",
+    "data": "node scripts/build-data.mjs",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.1.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.3.0",
+    "vitest": "^2.1.0"
+  }
+}

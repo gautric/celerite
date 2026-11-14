@@ -71,7 +71,8 @@ export const TILES = {
   osm: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
   osmAttribution: "© OpenStreetMap contributors",
   // DEM Terrarium (CORS activé) hébergé par AWS Open Data.
-  terrarium: "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+  terrarium:
+    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
   terrariumAttribution: "Terrain : AWS Open Data (elevation-tiles-prod)",
 };
 
@@ -87,6 +88,9 @@ export const BEAM_WIDTH_PX = 6;
 export const BEAM_SEGMENTS = 32;
 
 // --- Couleurs (deck.gl attend du RGBA 0-255) ---
+// SOURCE UNIQUE des couleurs partagées entre la 3D (deck.gl), le profil 2D
+// (Chart.js) et, à terme, le CSS. Les teintes réutilisées ailleurs sont
+// dérivées de ces tableaux via rgbCss / rgbaCss pour éviter toute divergence.
 export const COLORS = {
   buildingDefault: "#8aa0b4",
   buildingObstruct: "#e23c3c",
@@ -96,6 +100,29 @@ export const COLORS = {
   markerB: [60, 140, 255, 255], // récepteur (bleu)
   obstructionHit: [226, 60, 60, 255], // point d'impact (rouge)
 };
+
+// Conversions tableau RGBA 0-255 -> chaîne CSS (pour Chart.js et le DOM).
+export const rgbCss = ([r, g, b]) => `rgb(${r},${g},${b})`;
+export const rgbaCss = ([r, g, b, a = 255]) =>
+  `rgba(${r},${g},${b},${+(a / 255).toFixed(3)})`;
+
+// Palette propre au profil 2D (Chart.js). Les teintes du faisceau ne sont pas
+// dupliquées ici : chart2d.js les dérive de COLORS.beamClear / beamBlocked.
+export const CHART_COLORS = {
+  ground: "#6b4f3a",
+  groundFill: "rgba(107,79,58,0.25)",
+  buildingTop: "#9aa7b2",
+  buildingTopFill: "rgba(154,167,178,0.45)",
+  verdictClearText: "rgb(40,170,110)",
+  verdictBlockedText: "rgb(226,60,60)",
+};
+
+// --- Verdict de ligne de visée ---
+// La valeur logique renvoyée par los.analyze() est en anglais et stable
+// ("CLEAR" / "BLOCKED") : c'est elle que comparent app.js et chart2d.js. Le
+// texte AFFICHÉ à l'utilisateur (UI francophone) est dérivé de cette table,
+// pour ne jamais montrer un libellé anglais dans l'interface.
+export const VERDICT_LABEL = { CLEAR: "DÉGAGÉ", BLOCKED: "OBSTRUÉ" };
 
 // Rayon terrestre moyen (m) pour haversine et sagitta.
 export const EARTH_RADIUS = 6371000;

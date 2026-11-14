@@ -9,7 +9,7 @@ et aux bâtiments pour déterminer s'il est **dégagé** ou **obstrué**.
 
 > 🔗 **Démo en ligne** : https://g.autric.net/celerite/
 
-C'est la version **2D (profil en coupe) et 3D (scène géospatiale)** du *tir laser*
+C'est la version **2D (profil en coupe) et 3D (scène géospatiale)** du _tir laser_
 du site anniversaire de l'Observatoire de Paris —
 [célérité, 350 ans de Rømer](https://celerite.observatoiredeparis.psl.eu/).
 
@@ -34,7 +34,7 @@ au sommet le plus haut à cet endroit (sol + bâtiment) et on en déduit le
 - **deck.gl 9.4.0** (`MapLibreOverlay` en mode **interleaved**) — **le faisceau**
   est un **cylindre 3D** (`SimpleMeshLayer` + `CylinderGeometry` de luma.gl)
   dont les extrémités sont à l'**altitude absolue en mètres**. Le mode
-  interleaved partage le contexte WebGL2 et le *depth buffer* de MapLibre : le
+  interleaved partage le contexte WebGL2 et le _depth buffer_ de MapLibre : le
   faisceau est donc **testé en profondeur** et réellement **masqué** par le
   terrain et les bâtiments plus hauts que lui. Ce n'est **pas** une ligne
   drapée sur le sol.
@@ -47,12 +47,12 @@ services IGN / Overpass sont tous accessibles sans clé et compatibles CORS. On
 
 ## Sources de données
 
-| Donnée                 | Source                                                                 | Accès |
-| ---------------------- | ---------------------------------------------------------------------- | ----- |
-| Bâtiments + hauteurs   | **OpenStreetMap / Overpass API** (`overpass-api.de`, miroir kumi)      | pré-chargé dans `data/buildings.json` ; repli POST, User-Agent requis |
-| Profil d'élévation sol | **IGN Géoplateforme — RGE ALTI** (`data.geopf.fr/altimetrie`)          | pré-chargé dans `data/elevation.json` ; repli GET (puis Open-Elevation) |
-| Terrain 3D (relief)    | **DEM Terrarium — AWS Open Data** (`elevation-tiles-prod`)             | tuiles PNG |
-| Fond de carte          | **OpenStreetMap** tuiles raster                                        | tuiles PNG |
+| Donnée                 | Source                                                            | Accès                                                                   |
+| ---------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Bâtiments + hauteurs   | **OpenStreetMap / Overpass API** (`overpass-api.de`, miroir kumi) | pré-chargé dans `data/buildings.json` ; repli POST, User-Agent requis   |
+| Profil d'élévation sol | **IGN Géoplateforme — RGE ALTI** (`data.geopf.fr/altimetrie`)     | pré-chargé dans `data/elevation.json` ; repli GET (puis Open-Elevation) |
+| Terrain 3D (relief)    | **DEM Terrarium — AWS Open Data** (`elevation-tiles-prod`)        | tuiles PNG                                                              |
+| Fond de carte          | **OpenStreetMap** tuiles raster                                   | tuiles PNG                                                              |
 
 Attributions affichées sur la carte : « © OpenStreetMap contributors » et
 « Terrain : AWS Open Data (elevation-tiles-prod) ».
@@ -64,14 +64,15 @@ de la ligne de visée.
 ## Lancer l'application
 
 L'app utilise des modules ES (`type="module"`) ; servez-la via HTTP (pas en
-`file://`) :
+`file://`). Le serveur statique sans dépendance (`server.js`, Node ≥ 18) est la
+voie recommandée :
 
 ```bash
-cd /Users/gautric/Source/divers/laser
-python3 -m http.server 8000
+make serve        # sert sur :8000 et ouvre le navigateur (macOS)
 ```
 
-Puis ouvrez **http://localhost:8000**.
+Puis ouvrez **http://localhost:8000**. (Tout autre serveur statique convient,
+p. ex. `python3 -m http.server 8000`.)
 
 Au chargement : la scène 3D s'initialise, les bâtiments et le profil
 d'élévation sont lus en parallèle dans les fichiers pré-chargés `data/*.json`
@@ -113,7 +114,7 @@ par défaut est calculée, puis la ligne de visée est analysée et affichée.
   « 12 », « 12 m », décimales, virgule décimale) ; sinon `building:levels × 3 m` ;
   sinon **8 m** par défaut.
 - **Interpolation du trajet** : linéaire en lon/lat (erreur négligeable sur 8,5 km).
-- **Courbure terrestre** : correction *sagitta* implémentée mais **désactivée par
+- **Courbure terrestre** : correction _sagitta_ implémentée mais **désactivée par
   défaut** (≈ 1,3 m max sur 8,5 km, négligeable). Voir `USE_CURVATURE` dans
   `js/config.js` et `sagitta()` dans `js/los.js`.
 - **Relations OSM** : seuls les anneaux `outer` exploitables sont retenus ; les
@@ -174,10 +175,10 @@ par défaut est calculée, puis la ligne de visée est analysée et affichée.
 ## Structure du projet
 
 ```
-index.html          page + métadonnées de partage + chargement des CDN
+index.html           page + métadonnées de partage + CDN (avec SRI) + CSP
 css/style.css        mise en page (3D plein cadre + panneaux)
 assets/              carte sociale (SVG source + PNG 1200x630) et favicon
-js/config.js         constantes du scénario, endpoints, couleurs
+js/config.js         constantes du scénario, endpoints, couleurs, verdict
 js/geo.js            haversine, azimut, interpolation, point-dans-polygone
 js/data.js           fichiers data/*.json, sinon Overpass + IGN/Open-Elevation
 data/buildings.json  bâtiments pré-chargés du corridor (make data)
@@ -187,7 +188,32 @@ js/los.js            analyse de la ligne de visée
 js/scene3d.js        MapLibre (terrain, bâtiments) + deck.gl (faisceau 3D)
 js/chart2d.js        profil en coupe 2D (Chart.js)
 js/app.js            orchestration, UI, cache mémoire
+server.js            serveur statique de dev sans dépendance
+test/                tests unitaires du cœur pur (geo, los, data) — Vitest
+package.json         scripts npm + devDependencies (ESLint, Prettier, Vitest)
+eslint.config.js     config ESLint « flat »
+.prettierrc.json     config Prettier
 ```
+
+## Développement
+
+Le cœur métier (`geo.js`, `los.js`, les helpers purs de `data.js`) est couvert
+par des tests unitaires ; le style est verrouillé par ESLint + Prettier.
+
+```bash
+npm install          # dépendances de dev (ESLint, Prettier, Vitest)
+make test            # ou npm test   — tests unitaires (Vitest)
+make lint            # ou npm run lint   — analyse statique
+make format          # ou npm run format — reformate avec Prettier
+make data            # régénère data/*.json depuis Overpass + IGN
+```
+
+Les libs CDN sont épinglées par version **et** par empreinte **SRI**
+(`integrity` dans `index.html`) ; une **Content-Security-Policy** (balise
+`<meta>`) restreint les origines autorisées. Après toute évolution de la pile
+(version de lib, nouvel endpoint), ouvrir l'app et vérifier **zéro violation
+CSP** dans la console avant de committer : un `push` sur `main` déclenche le
+déploiement GitHub Pages.
 
 ## Aperçu lors d'un partage (LinkedIn, Twitter/X, Slack)
 
@@ -208,7 +234,7 @@ affiche une vignette large avec titre, description et image.
   (le domaine du fichier `CNAME`). Si le site est déployé ailleurs, mettre ces
   deux valeurs à jour, sinon l'aperçu restera vide.
 - Les plateformes **mettent les aperçus en cache**. Après un changement, forcer
-  le rafraîchissement avec le *LinkedIn Post Inspector*
-  (https://www.linkedin.com/post-inspector/), le *Twitter Card Validator*, ou en
+  le rafraîchissement avec le _LinkedIn Post Inspector_
+  (https://www.linkedin.com/post-inspector/), le _Twitter Card Validator_, ou en
   partageant l'URL suffixée `?v=2`. Slack rafraîchit de lui-même après quelques
   dizaines de minutes.

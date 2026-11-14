@@ -42,7 +42,7 @@ async function buildBuildings() {
   const fc = await fetchBuildingsFromOverpass(log);
   for (const f of fc.features) {
     f.geometry.coordinates = f.geometry.coordinates.map((ring) =>
-      ring.map(([lon, lat]) => [round6(lon), round6(lat)])
+      ring.map(([lon, lat]) => [round6(lon), round6(lat)]),
     );
   }
   fc.meta = {

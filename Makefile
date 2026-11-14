@@ -1,5 +1,5 @@
 # Makefile - Expérience ligne de visée laser Meudon -> Paris Arago
-# Sert l'application statique via un serveur Node (http-server lancé par npx).
+# Sert l'application statique via le serveur Node sans dépendance (server.js).
 
 # Port d'écoute (surchargeable : make serve PORT=9000)
 PORT ?= 8000
@@ -7,17 +7,19 @@ URL  := http://localhost:$(PORT)
 
 .DEFAULT_GOAL := serve
 
-.PHONY: serve start open stop data social help
+.PHONY: serve start open stop data social lint format test help
 
-## serve : lance le serveur statique Node sur $(PORT) (Ctrl+C pour arrêter)
-serve:
-	@echo "Serveur Node sur $(URL)  (Ctrl+C pour arrêter)"
-	npx --yes http-server . -p $(PORT) -c-1 -o
+## serve : lance le serveur statique sur $(PORT) et ouvre le navigateur
+serve: open-delayed
+	@PORT=$(PORT) node server.js
 
-## start : alias de serve, sans ouverture automatique du navigateur
+## open-delayed : ouvre le navigateur après 1 s, en tâche de fond (usage interne)
+open-delayed:
+	@(sleep 1 && open $(URL) >/dev/null 2>&1 &) || true
+
+## start : lance le serveur statique sur $(PORT) sans ouvrir le navigateur
 start:
-	@echo "Serveur Node sur $(URL)  (Ctrl+C pour arrêter)"
-	npx --yes http-server . -p $(PORT) -c-1
+	@PORT=$(PORT) node server.js
 
 ## open : ouvre l'application dans le navigateur par défaut (macOS)
 open:
@@ -32,6 +34,18 @@ stop:
 ## data : pré-charge bâtiments (Overpass) + profil d'élévation (IGN) dans data/*.json
 data:
 	node scripts/build-data.mjs
+
+## lint : analyse statique du JS (ESLint)
+lint:
+	npm run lint
+
+## format : reformate le code (Prettier)
+format:
+	npm run format
+
+## test : exécute les tests unitaires (Vitest)
+test:
+	npm test
 
 ## social : régénère l'image d'aperçu social 1200x630 (PNG) depuis le SVG
 social:

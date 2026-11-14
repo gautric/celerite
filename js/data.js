@@ -61,7 +61,9 @@ function shortDate(iso) {
  */
 export function parseMeters(value) {
   if (value == null) return null;
-  const m = String(value).replace(",", ".").match(/-?\d+(\.\d+)?/);
+  const m = String(value)
+    .replace(",", ".")
+    .match(/-?\d+(\.\d+)?/);
   if (!m) return null;
   const n = parseFloat(m[0]);
   return Number.isFinite(n) ? n : null;
@@ -73,8 +75,7 @@ export function parseMeters(value) {
  * sinon hauteur par défaut.
  */
 export function parseHeight(tags = {}) {
-  const h =
-    parseMeters(tags.height) ?? parseMeters(tags["building:height"]);
+  const h = parseMeters(tags.height) ?? parseMeters(tags["building:height"]);
   if (h != null && h > 0) return h;
   const levels = parseMeters(tags["building:levels"]);
   if (levels != null && levels > 0) return levels * METERS_PER_LEVEL;
@@ -108,7 +109,8 @@ function wayToRing(geometry) {
   // Ferme l'anneau si nécessaire.
   const first = ring[0];
   const last = ring[ring.length - 1];
-  if (first[0] !== last[0] || first[1] !== last[1]) ring.push([first[0], first[1]]);
+  if (first[0] !== last[0] || first[1] !== last[1])
+    ring.push([first[0], first[1]]);
   return ring;
 }
 
@@ -174,11 +176,13 @@ export async function fetchBuildings(onStatus = () => {}) {
     _buildingsCache = fc;
     const date = shortDate(fc.meta.osmTimestamp);
     onStatus(
-      `Bâtiments chargés (fichier local${date ? ` du ${date}` : ""}) : ${fc.features.length}.`
+      `Bâtiments chargés (fichier local${date ? ` du ${date}` : ""}) : ${fc.features.length}.`,
     );
     return fc;
   } catch (err) {
-    console.warn(`Bâtiments : fichier local ignoré (${err.message}), repli Overpass.`);
+    console.warn(
+      `Bâtiments : fichier local ignoré (${err.message}), repli Overpass.`,
+    );
   }
   _buildingsCache = await fetchBuildingsFromOverpass(onStatus);
   return _buildingsCache;
@@ -193,7 +197,11 @@ export async function fetchBuildings(onStatus = () => {}) {
 export async function fetchBuildingsFromOverpass(onStatus = () => {}) {
   const query = buildOverpassQuery();
   const body = new URLSearchParams({ data: query }).toString();
-  const targets = [ENDPOINTS.overpass, ENDPOINTS.overpass, ENDPOINTS.overpassMirror];
+  const targets = [
+    ENDPOINTS.overpass,
+    ENDPOINTS.overpass,
+    ENDPOINTS.overpassMirror,
+  ];
 
   let lastErr = null;
   for (let i = 0; i < targets.length; i++) {
@@ -202,7 +210,7 @@ export async function fetchBuildingsFromOverpass(onStatus = () => {}) {
       onStatus(
         i === 0
           ? "Chargement des bâtiments (Overpass)…"
-          : `Nouvelle tentative Overpass (${i + 1}/${targets.length})…`
+          : `Nouvelle tentative Overpass (${i + 1}/${targets.length})…`,
       );
       const res = await fetch(url, {
         method: "POST",
@@ -215,7 +223,9 @@ export async function fetchBuildingsFromOverpass(onStatus = () => {}) {
       if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
       const json = await res.json();
       const fc = overpassToGeoJSON(json);
-      fc.meta = { osmTimestamp: (json.osm3s && json.osm3s.timestamp_osm_base) || null };
+      fc.meta = {
+        osmTimestamp: (json.osm3s && json.osm3s.timestamp_osm_base) || null,
+      };
       onStatus(`Bâtiments chargés : ${fc.features.length}.`);
       return fc;
     } catch (err) {
@@ -223,7 +233,7 @@ export async function fetchBuildingsFromOverpass(onStatus = () => {}) {
     }
   }
   throw new Error(
-    `Échec du chargement des bâtiments (Overpass) : ${lastErr && lastErr.message}`
+    `Échec du chargement des bâtiments (Overpass) : ${lastErr && lastErr.message}`,
   );
 }
 
@@ -324,7 +334,9 @@ export async function fetchElevations(points, onStatus = () => {}) {
     zs = file.z;
     onStatus(`Profil d'élévation chargé (fichier local, ${zs.length} points).`);
   } catch (err) {
-    console.warn(`Élévation : fichier local ignoré (${err.message}), repli IGN.`);
+    console.warn(
+      `Élévation : fichier local ignoré (${err.message}), repli IGN.`,
+    );
   }
   if (!zs) zs = await fetchElevationsFromNetwork(points, onStatus);
   _elevationCache.set(key, zs);
@@ -353,7 +365,7 @@ export async function fetchElevationsFromNetwork(points, onStatus = () => {}) {
     } catch (oeErr) {
       throw new Error(
         `Échec du profil d'élévation (IGN : ${ignErr.message} ; ` +
-          `Open-Elevation : ${oeErr.message})`
+          `Open-Elevation : ${oeErr.message})`,
       );
     }
   }

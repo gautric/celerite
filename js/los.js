@@ -3,11 +3,7 @@
 // Pour chaque échantillon on calcule l'altitude du faisceau par interpolation
 // linéaire, puis le sommet d'obstacle = sol IGN + hauteur du bâtiment touché.
 
-import {
-  bboxOfRing,
-  pointInBbox,
-  pointInPolygon,
-} from "./geo.js";
+import { bboxOfRing, pointInBbox, pointInPolygon } from "./geo.js";
 import { EARTH_RADIUS, USE_CURVATURE } from "./config.js";
 
 /**
@@ -102,17 +98,29 @@ export function analyze({ samples, groundZ, buildings, altA, altB }) {
 
     // Obstruction réelle à cet échantillon.
     if (c <= 0) {
-      obstructions.push({ index: i, lon: s.lon, lat: s.lat, clearance: c, top });
+      obstructions.push({
+        index: i,
+        lon: s.lon,
+        lat: s.lat,
+        clearance: c,
+        top,
+      });
       // Marque tous les bâtiments touchés à cet échantillon comme obstruants.
       for (const b of index) {
-        if (b._hitSample === i && b._hitHeight > 0 && g + b._hitHeight >= bAlt) {
+        if (
+          b._hitSample === i &&
+          b._hitHeight > 0 &&
+          g + b._hitHeight >= bAlt
+        ) {
           obstructingBuildingIds.add(b.id);
         }
       }
     }
   }
 
-  const verdict = minClearance > 0 ? "CLEAR" : "OBSTRUÉ";
+  // Valeur LOGIQUE et stable (anglais) : les comparaisons de app.js / chart2d.js
+  // s'y réfèrent. Le libellé francophone affiché est dérivé via VERDICT_LABEL.
+  const verdict = minClearance > 0 ? "CLEAR" : "BLOCKED";
 
   return {
     verdict,

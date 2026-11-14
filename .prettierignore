@@ -1,0 +1,5 @@
+data/
+assets/og-image.png
+node_modules/
+# Artefacts de revue internes : historique, laissés tels quels.
+.agents/

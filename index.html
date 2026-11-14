@@ -1,9 +1,27 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Tir laser Meudon → Paris Arago — Ligne de visée 3D</title>
+
+    <!-- Content-Security-Policy : restreint les origines autorisées à celles
+         réellement utilisées (CDN des libs, tuiles, services de données). Les
+         origines sont le miroir de js/config.js (ENDPOINTS, TILES) et des CDN
+         ci-dessous ; les mettre à jour ensemble.
+           - 'unsafe-inline' (script) : requis par l'import map et le JSON-LD
+             en ligne ; le durcissement supply-chain repose ici sur les
+             empreintes SRI des scripts externes + la liste blanche d'origines.
+           - 'unsafe-inline' (style) : styles injectés à l'exécution par
+             MapLibre et attribut style="" du bandeau de statut.
+           - blob: (worker/img) : MapLibre crée ses web workers et certaines
+             images en blob:. data: (img) : sprites/markers éventuels.
+         À VÉRIFIER dans la console du navigateur (zéro violation CSP) après
+         toute évolution de la pile avant de committer (déploiement auto Pages). -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; base-uri 'self'; object-src 'none'; img-src 'self' data: blob: https://tile.openstreetmap.org https://s3.amazonaws.com; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://esm.sh; style-src 'self' 'unsafe-inline' https://unpkg.com; font-src 'self' data:; worker-src blob:; child-src blob:; connect-src 'self' https://overpass-api.de https://overpass.kumi.systems https://data.geopf.fr https://api.open-elevation.com https://esm.sh https://tile.openstreetmap.org https://s3.amazonaws.com"
+    />
 
     <!-- ===================================================================
          Métadonnées de partage (Open Graph / Twitter Card).
@@ -107,10 +125,20 @@
     <link
       rel="stylesheet"
       href="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.css"
+      integrity="sha384-mnM9NG1099tBMNxdDQNDKIxYcn/fmqQXFJvbT5l1MsrWvzfxBEffceBsw75/cW2R"
+      crossorigin="anonymous"
     />
-    <script src="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.js"></script>
+    <script
+      src="https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.js"
+      integrity="sha384-7+0QVD3+GoeOjaW35yTmpj0FR1K45ugw4ZUY0qEFomHSmAude6e9nB6/Xy5aPnzQ"
+      crossorigin="anonymous"
+    ></script>
     <!-- deck.gl (faisceau 3D à altitude vraie, occlusion par profondeur) -->
-    <script src="https://unpkg.com/deck.gl@9.4.0/dist.min.js"></script>
+    <script
+      src="https://unpkg.com/deck.gl@9.4.0/dist.min.js"
+      integrity="sha384-NrpHmp6N6IhXZ+gSV+uRLo+Hqprkw4BfdGzmxgWXhjakjkAabyfQxokSmn/aK0VB"
+      crossorigin="anonymous"
+    ></script>
     <!-- CylinderGeometry de luma.gl (moteur de deck.gl), absente du bundle
          deck.gl : maillage du faisceau. Même version que le luma.gl de deck.gl. -->
     <script type="importmap">
@@ -121,7 +149,11 @@
       }
     </script>
     <!-- Chart.js (profil en coupe 2D) -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"
+      integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt"
+      crossorigin="anonymous"
+    ></script>
 
     <link rel="stylesheet" href="css/style.css" />
   </head>
@@ -129,11 +161,11 @@
     <header id="header">
       <h1>Tir laser Meudon → Paris (Coupole Arago)</h1>
       <p>
-        Expérience scientifique : visualisation 3D d'une ligne de visée (faisceau
-        laser) entre la Grande Coupole de l'Observatoire de Meudon (terrasse à
-        162 m d'altitude) et la Coupole Arago de l'Observatoire de Paris. Le
-        faisceau est tracé à son altitude réelle et testé contre le relief et les
-        bâtiments pour déterminer s'il est dégagé ou obstrué.
+        Expérience scientifique : visualisation 3D d'une ligne de visée
+        (faisceau laser) entre la Grande Coupole de l'Observatoire de Meudon
+        (terrasse à 162 m d'altitude) et la Coupole Arago de l'Observatoire de
+        Paris. Le faisceau est tracé à son altitude réelle et testé contre le
+        relief et les bâtiments pour déterminer s'il est dégagé ou obstrué.
       </p>
     </header>
 
@@ -192,7 +224,12 @@
           aria-describedby="nav-hint"
           title="Glisser : cap sur 360° · Maj ou Ctrl + glisser : inclinaison 0-90° · flèches gauche/droite : cap, haut/bas : inclinaison (±5° avec Maj) · double-clic : nord"
         >
-          <svg class="hc-dial" viewBox="-50 -50 100 100" aria-hidden="true" focusable="false">
+          <svg
+            class="hc-dial"
+            viewBox="-50 -50 100 100"
+            aria-hidden="true"
+            focusable="false"
+          >
             <circle class="hc-face" cx="0" cy="0" r="40" />
             <!-- Index fixe : repère de lecture du cap, en haut du cadran. -->
             <polygon class="hc-index" points="0,-41 -4.5,-49 4.5,-49" />
@@ -200,36 +237,236 @@
                  que le N pointe vers le nord géographique à l'écran. -->
             <g id="hc-rose" class="hc-rose" transform="rotate(0)">
               <!-- Graduations majeures tous les 45°. -->
-              <line class="hc-tick hc-tick--major" x1="0" y1="-38" x2="0" y2="-29" transform="rotate(0)" />
-              <line class="hc-tick hc-tick--major" x1="0" y1="-38" x2="0" y2="-29" transform="rotate(45)" />
-              <line class="hc-tick hc-tick--major" x1="0" y1="-38" x2="0" y2="-29" transform="rotate(90)" />
-              <line class="hc-tick hc-tick--major" x1="0" y1="-38" x2="0" y2="-29" transform="rotate(135)" />
-              <line class="hc-tick hc-tick--major" x1="0" y1="-38" x2="0" y2="-29" transform="rotate(180)" />
-              <line class="hc-tick hc-tick--major" x1="0" y1="-38" x2="0" y2="-29" transform="rotate(225)" />
-              <line class="hc-tick hc-tick--major" x1="0" y1="-38" x2="0" y2="-29" transform="rotate(270)" />
-              <line class="hc-tick hc-tick--major" x1="0" y1="-38" x2="0" y2="-29" transform="rotate(315)" />
+              <line
+                class="hc-tick hc-tick--major"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-29"
+                transform="rotate(0)"
+              />
+              <line
+                class="hc-tick hc-tick--major"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-29"
+                transform="rotate(45)"
+              />
+              <line
+                class="hc-tick hc-tick--major"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-29"
+                transform="rotate(90)"
+              />
+              <line
+                class="hc-tick hc-tick--major"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-29"
+                transform="rotate(135)"
+              />
+              <line
+                class="hc-tick hc-tick--major"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-29"
+                transform="rotate(180)"
+              />
+              <line
+                class="hc-tick hc-tick--major"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-29"
+                transform="rotate(225)"
+              />
+              <line
+                class="hc-tick hc-tick--major"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-29"
+                transform="rotate(270)"
+              />
+              <line
+                class="hc-tick hc-tick--major"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-29"
+                transform="rotate(315)"
+              />
               <!-- Graduations mineures tous les 15°. -->
-              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(15)" />
-              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(30)" />
-              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(60)" />
-              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(75)" />
-              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(105)" />
-              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(120)" />
-              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(150)" />
-              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(165)" />
-              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(195)" />
-              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(210)" />
-              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(240)" />
-              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(255)" />
-              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(285)" />
-              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(300)" />
-              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(330)" />
-              <line class="hc-tick" x1="0" y1="-38" x2="0" y2="-34" transform="rotate(345)" />
+              <line
+                class="hc-tick"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-34"
+                transform="rotate(15)"
+              />
+              <line
+                class="hc-tick"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-34"
+                transform="rotate(30)"
+              />
+              <line
+                class="hc-tick"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-34"
+                transform="rotate(60)"
+              />
+              <line
+                class="hc-tick"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-34"
+                transform="rotate(75)"
+              />
+              <line
+                class="hc-tick"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-34"
+                transform="rotate(105)"
+              />
+              <line
+                class="hc-tick"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-34"
+                transform="rotate(120)"
+              />
+              <line
+                class="hc-tick"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-34"
+                transform="rotate(150)"
+              />
+              <line
+                class="hc-tick"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-34"
+                transform="rotate(165)"
+              />
+              <line
+                class="hc-tick"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-34"
+                transform="rotate(195)"
+              />
+              <line
+                class="hc-tick"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-34"
+                transform="rotate(210)"
+              />
+              <line
+                class="hc-tick"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-34"
+                transform="rotate(240)"
+              />
+              <line
+                class="hc-tick"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-34"
+                transform="rotate(255)"
+              />
+              <line
+                class="hc-tick"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-34"
+                transform="rotate(285)"
+              />
+              <line
+                class="hc-tick"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-34"
+                transform="rotate(300)"
+              />
+              <line
+                class="hc-tick"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-34"
+                transform="rotate(330)"
+              />
+              <line
+                class="hc-tick"
+                x1="0"
+                y1="-38"
+                x2="0"
+                y2="-34"
+                transform="rotate(345)"
+              />
               <!-- Points cardinaux (O = Ouest). -->
-              <text class="hc-label hc-label--n" x="0" y="-22" text-anchor="middle" dominant-baseline="central">N</text>
-              <text class="hc-label" x="22" y="0" text-anchor="middle" dominant-baseline="central">E</text>
-              <text class="hc-label" x="0" y="22" text-anchor="middle" dominant-baseline="central">S</text>
-              <text class="hc-label" x="-22" y="0" text-anchor="middle" dominant-baseline="central">O</text>
+              <text
+                class="hc-label hc-label--n"
+                x="0"
+                y="-22"
+                text-anchor="middle"
+                dominant-baseline="central"
+              >
+                N
+              </text>
+              <text
+                class="hc-label"
+                x="22"
+                y="0"
+                text-anchor="middle"
+                dominant-baseline="central"
+              >
+                E
+              </text>
+              <text
+                class="hc-label"
+                x="0"
+                y="22"
+                text-anchor="middle"
+                dominant-baseline="central"
+              >
+                S
+              </text>
+              <text
+                class="hc-label"
+                x="-22"
+                y="0"
+                text-anchor="middle"
+                dominant-baseline="central"
+              >
+                O
+              </text>
               <!-- Aiguille : pointe rouge vers le nord, contrepoids vers le sud. -->
               <polygon class="hc-needle-n" points="0,-15 -3.5,0 3.5,0" />
               <polygon class="hc-needle-s" points="0,15 -3.5,0 3.5,0" />
@@ -285,7 +522,13 @@
           <label class="ctrl">
             Hauteur ajoutée au départ (Meudon) :
             <span id="addStart-val">0 m</span>
-            <input id="input-addStart" type="range" min="0" max="50" step="0.5" />
+            <input
+              id="input-addStart"
+              type="range"
+              min="0"
+              max="50"
+              step="0.5"
+            />
           </label>
 
           <label class="ctrl">
@@ -307,11 +550,22 @@
           <fieldset class="toggles">
             <legend>Hauteur des immeubles</legend>
             <label for="bh-reelle">
-              <input id="bh-reelle" type="radio" name="building-height" value="reelle" />
+              <input
+                id="bh-reelle"
+                type="radio"
+                name="building-height"
+                value="reelle"
+              />
               Hauteur réelle
             </label>
             <label for="bh-exageree">
-              <input id="bh-exageree" type="radio" name="building-height" value="exageree" checked />
+              <input
+                id="bh-exageree"
+                type="radio"
+                name="building-height"
+                value="exageree"
+                checked
+              />
               Hauteur exagérée
             </label>
             <small class="hint">
@@ -322,10 +576,21 @@
 
           <fieldset class="toggles">
             <legend>Affichage</legend>
-            <label><input id="toggle-buildings" type="checkbox" checked /> Bâtiments</label>
-            <label><input id="toggle-terrain" type="checkbox" checked /> Terrain 3D</label>
-            <label><input id="toggle-beam" type="checkbox" checked /> Faisceau</label>
-            <label><input id="toggle-profil" type="checkbox" /> Profil 2D</label>
+            <label
+              ><input id="toggle-buildings" type="checkbox" checked />
+              Bâtiments</label
+            >
+            <label
+              ><input id="toggle-terrain" type="checkbox" checked /> Terrain
+              3D</label
+            >
+            <label
+              ><input id="toggle-beam" type="checkbox" checked />
+              Faisceau</label
+            >
+            <label
+              ><input id="toggle-profil" type="checkbox" /> Profil 2D</label
+            >
           </fieldset>
         </section>
       </aside>
