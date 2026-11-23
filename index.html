@@ -519,7 +519,8 @@
             <small id="hint-altB" class="hint"></small>
           </label>
 
-          <label class="ctrl">
+          <!-- Hauteurs ajoutées : désactivées dans l'IHM (restent à 0 m). -->
+          <label class="ctrl" hidden>
             Hauteur ajoutée au départ (Meudon) :
             <span id="addStart-val">0 m</span>
             <input
@@ -531,7 +532,7 @@
             />
           </label>
 
-          <label class="ctrl">
+          <label class="ctrl" hidden>
             Hauteur ajoutée à l'arrivée (Arago) :
             <span id="addEnd-val">0 m</span>
             <input id="input-addEnd" type="range" min="0" max="50" step="0.5" />

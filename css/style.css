@@ -125,6 +125,9 @@ body {
   font-size: 13px;
   color: var(--muted);
 }
+.ctrl[hidden] {
+  display: none;
+}
 .ctrl input[type="number"] {
   display: block;
   width: 100%;
